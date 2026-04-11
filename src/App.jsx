@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════
 // 상수 & 설정
@@ -46,8 +46,7 @@ const TEAM_INFLUENCE = [
   { key: "tacticalIQ",    label: "전술 이해도",       icon: "🧠", options: ["정해진 롤만 소화", "기본 전술 충실", "높은 전술 이해도"] },
 ];
 
-const STAT_SCORE = { "하": 45, "중": 68, "상": 88 };
-const TECH_SCORE = { "약함": 42, "보통": 65, "강함": 87, "느림": 42, "보통": 65, "치달의 달인": 87, "백패스 위주": 42, "간결한 탈압박": 65, "크랙 (파괴자)": 87, "부정확": 42, "평범": 65, "택배 크로스": 87, "평범함": 42, "시야 넓음": 65, "대지를 가르는 패스": 87, "투박함": 42, "무난함": 65, "유려한 발밑": 87, "시도 안함": 42, "위협적": 65, "대포알": 87, "조심스러움": 42, "깔끔함": 65, "진공청소기": 87, "늦음": 42, "예측력 좋음": 65, "길목 차단 달인": 87, "짧은 패스 위주": 42, "안정적": 65, "롱패스 능함": 87, "잘 뚫림": 42, "끈질김": 65, "통곡의 벽": 87, "수비 집중": 42, "적절한 타이밍": 65, "지치지 않는 체력": 87, "아쉬움": 42, "날카로움": 87, "약함": 42, "안정적인 짧은 패스": 65, "롱패스 빌드업": 87, "조용함": 42, "라인 컨트롤 능함": 65, "수비진의 사령관": 87, "걷어내기 위주": 42, "슈퍼세이브": 87, "완벽한 제공권": 87, "정확한 배급": 87, "잘 밀림": 42, "버팀": 65, "철벽 키핑": 87, "타점 높음": 87, "원샷원킬": 87, "제공권 장악": 87 };
+const TECH_SCORE = { "약함": 42, "보통": 65, "강함": 87, "느림": 42, "치달의 달인": 87, "백패스 위주": 42, "간결한 탈압박": 65, "크랙 (파괴자)": 87, "부정확": 42, "평범": 65, "택배 크로스": 87, "평범함": 42, "시야 넓음": 65, "대지를 가르는 패스": 87, "투박함": 42, "무난함": 65, "유려한 발밑": 87, "시도 안함": 42, "위협적": 65, "대포알": 87, "조심스러움": 42, "깔끔함": 65, "진공청소기": 87, "늦음": 42, "예측력 좋음": 65, "길목 차단 달인": 87, "짧은 패스 위주": 42, "안정적": 65, "롱패스 능함": 87, "잘 뚫림": 42, "끈질김": 65, "통곡의 벽": 87, "수비 집중": 42, "적절한 타이밍": 65, "지치지 않는 체력": 87, "아쉬움": 42, "날카로움": 87, "안정적인 짧은 패스": 65, "롱패스 빌드업": 87, "조용함": 42, "라인 컨트롤 능함": 65, "수비진의 사령관": 87, "걷어내기 위주": 42, "슈퍼세이브": 87, "완벽한 제공권": 87, "정확한 배급": 87, "잘 밀림": 42, "버팀": 65, "철벽 키핑": 87, "타점 높음": 87, "원샷원킬": 87, "제공권 장악": 87 };
 
 const PLAYER_COMPARISONS = {
   GK: { name: "알리송 베커",            club: "리버풀",              color: "#1a3a6b", accent: "#f0c040" },
@@ -174,10 +173,6 @@ const SectionLabel = ({ number, children }) => (
   </div>
 );
 
-const Tag = ({ label, active, onClick, color = "#4ade80" }) => (
-  <button onClick={onClick} style={{ borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer", transition: "all 0.15s", background: active ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.04)", color: active ? color : "#94a3b8", border: active ? `1px solid ${color}` : "1px solid rgba(255,255,255,0.1)" }}>{label}</button>
-);
-
 const FootRating = ({ label, value, onChange }) => (
   <div>
     <div style={{ fontSize: 11, color: "#64748b", marginBottom: 9 }}>{label}</div>
@@ -221,33 +216,6 @@ const StatBar = ({ label, value, color = "#4ade80" }) => (
     </div>
   </div>
 );
-
-const Header = ({ phase }) => {
-  const steps = ["팀 설정", "선수 입력", "개인 분석", "팀 분석", "전술 가이드", "결과"];
-  const idx = { "landing": -1, "team-setup": 0, "formation": 1, "player-analysis": 2, "team-analysis": 3, "tactical-guide": 4, "result": 5 }[phase] ?? 0;
-  if (phase === "landing") return null;
-  return (
-    <div style={{ background: "linear-gradient(180deg,#071a0e,#060b14)", borderBottom: "1px solid rgba(74,222,128,0.2)", padding: "14px 20px", position: "sticky", top: 0, zIndex: 100 }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#16a34a,#4ade80)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⚽</div>
-          <div>
-            <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 20, fontWeight: 700, color: "#4ade80", letterSpacing: 2, lineHeight: 1 }}>SquadLab</div>
-            <div style={{ fontSize: 10, color: "#4ade80aa", letterSpacing: 3 }}>AI TACTICAL ADVISOR</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 5, marginTop: 14 }}>
-          {steps.map((s, i) => (
-            <div key={s} style={{ flex: 1 }}>
-              <div style={{ height: 3, borderRadius: 2, background: i <= idx ? "#4ade80" : "rgba(255,255,255,0.08)" }} />
-              <div style={{ fontSize: 9, color: i <= idx ? "#4ade80" : "#334155", marginTop: 4, textAlign: "center" }}>{s}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const Toast = ({ msg }) => msg ? (
   <div style={{ position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)", background: "#0d1420", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 12, padding: "12px 22px", fontSize: 13, fontWeight: 600, color: "#4ade80", zIndex: 300, whiteSpace: "nowrap", boxShadow: "0 4px 24px rgba(0,0,0,0.5)" }}>
