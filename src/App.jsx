@@ -159,9 +159,6 @@ function analyzeTeam(players) {
   return { radar, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 2), tactics, overallRating, stats: { avgSpeed, avgStamina, avgPhysical, avgTech } };
 }
 
-const encodeResult = r => btoa(unescape(encodeURIComponent(JSON.stringify({ n: r.teamName, f: r.formation, or: r.overallRating, tn: r.tactic?.name, ti: r.tactic?.icon, tc: r.tactic?.color, tf: r.tactic?.fit, rd: r.radar, s: r.strengths?.map(x => x.text), w: r.weaknesses?.map(x => x.text), p: r.players?.map(p => `${p.name}(${p.pos})`) }))));
-const getShareUrl = r => `${window.location.origin}${window.location.pathname}?r=${encodeResult(r)}`;
-
 // ═══════════════════════════════════════════════════════════════
 // 공통 UI
 // ═══════════════════════════════════════════════════════════════
@@ -437,8 +434,8 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
         <SectionLabel number={1}>기본 정보</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div style={{ gridColumn: "1 / -1" }}><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="이름" style={{ width: "100%", padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 14 }} /></div>
-          {[{ k: "age", ph: "나이" }, { k: "height", ph: "키 (cm)" }, { k: "weight", ph: "몸무게 (kg)" }].map(f => (
-            <input key={f.k} value={form[f.k]} onChange={e => setForm(fm => ({ ...fm, [f.k]: e.target.value }))} placeholder={f.ph} style={{ padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 13 }} />
+          {[{ k: "age", ph: "나이", min: 10, max: 100 }, { k: "height", ph: "키 (cm)", min: 100, max: 220 }, { k: "weight", ph: "몸무게 (kg)", min: 20, max: 200 }].map(f => (
+            <input key={f.k} type="number" min={f.min} max={f.max} value={form[f.k]} onChange={e => setForm(fm => ({ ...fm, [f.k]: e.target.value }))} placeholder={f.ph} style={{ padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 13 }} />
           ))}
         </div>
         <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", marginBottom: 22 }}>
@@ -912,7 +909,6 @@ function TacticalGuide({ players, teamName, tactic, onNext, onBack }) {
 // ═══════════════════════════════════════════════════════════════
 function ResultScreen({ result, players, onBack, showToast }) {
   const [isSaved, setIsSaved] = useState(false);
-  const [copied, setCopied] = useState(false);
   const { teamName, formation, overallRating, tactic, radar, strengths, weaknesses } = result;
   const playerList = FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
 
@@ -925,16 +921,6 @@ function ResultScreen({ result, players, onBack, showToast }) {
       setIsSaved(true);
       showToast("💾 팀이 저장되었어요!");
     } catch { showToast("저장에 실패했어요"); }
-  };
-
-  const handleCopy = async () => {
-    try {
-      const url = getShareUrl({ ...result, players: playerList });
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      showToast("🔗 링크가 복사되었어요! 카카오톡으로 보내보세요");
-      setTimeout(() => setCopied(false), 3000);
-    } catch { showToast("링크 복사에 실패했어요"); }
   };
 
   return (
@@ -992,8 +978,8 @@ function ResultScreen({ result, players, onBack, showToast }) {
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <button onClick={handleCopy} style={{ width: "100%", padding: "14px", borderRadius: 13, border: `1px solid ${copied ? "#4ade80" : "rgba(255,255,255,0.15)"}`, background: copied ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.04)", color: copied ? "#4ade80" : "#94a3b8", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1, transition: "all 0.2s" }}>
-          {copied ? "✓ 링크 복사 완료!" : "🔗 팀원들에게 공유하기"}
+        <button type="button" disabled style={{ width: "100%", padding: "14px", borderRadius: 13, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", color: "#475569", fontSize: 14, fontWeight: 700, cursor: "not-allowed", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1, opacity: 0.65 }}>
+          🔗 링크 공유 (준비중)
         </button>
         <button onClick={handleSave} disabled={isSaved} style={{ width: "100%", padding: "14px", borderRadius: 13, border: isSaved ? "1px solid rgba(74,222,128,0.3)" : "none", background: isSaved ? "rgba(74,222,128,0.08)" : "linear-gradient(135deg,#16a34a,#4ade80)", color: isSaved ? "#4ade80" : "#052e16", fontSize: 14, fontWeight: 700, cursor: isSaved ? "default" : "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
           {isSaved ? "✓ 저장됨" : "💾 이 팀 저장하기"}
