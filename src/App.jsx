@@ -373,7 +373,7 @@ const FootRating = ({ label, value, onChange }) => (
     <div style={{ fontSize: 11, color: "#64748b", marginBottom: 9 }}>{label}</div>
     <div style={{ display: "flex", gap: 7 }}>
       {[1, 2, 3, 4, 5].map(n => (
-        <button key={n} onClick={() => onChange(n === value ? null : n)} style={{ width: 38, height: 38, borderRadius: "50%", border: value && n <= value ? "2px solid #4ade80" : "1px solid rgba(255,255,255,0.1)", background: value && n <= value ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.03)", color: value && n <= value ? "#4ade80" : "#475569", fontWeight: value === n ? 700 : 500, fontSize: 14, cursor: "pointer", transition: "all 0.15s" }}>{n}</button>
+        <button key={n} onClick={() => onChange(n === value ? null : n)} style={{ flex: "1 1 0", minWidth: 0, maxWidth: 38, aspectRatio: "1 / 1", borderRadius: "50%", border: value && n <= value ? "2px solid #4ade80" : "1px solid rgba(255,255,255,0.1)", background: value && n <= value ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.03)", color: value && n <= value ? "#4ade80" : "#475569", fontWeight: value === n ? 700 : 500, fontSize: 14, cursor: "pointer", transition: "all 0.15s" }}>{n}</button>
       ))}
     </div>
   </div>
@@ -490,7 +490,7 @@ function LandingPage({ onStart, onDemo }) {
             <button onClick={onDemo} style={{ padding: "16px 28px", borderRadius: 14, border: "1px solid rgba(74,222,128,0.35)", background: "rgba(74,222,128,0.07)", color: "#4ade80", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>⚡ 데모 팀 바로 보기</button>
           </div>
           <div style={{ fontSize: 11.5, color: "#475569", marginTop: 14, animation: "fadeUp 0.8s ease 0.35s both" }}>입력이 번거로우시면 데모 팀으로 30초 만에 결과까지 볼 수 있어요</div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 48, marginTop: 60, animation: "fadeUp 0.8s ease 0.4s both" }}>
+          <div className="sq-landing-stats" style={{ display: "flex", justifyContent: "center", gap: 48, marginTop: 60, animation: "fadeUp 0.8s ease 0.4s both" }}>
             {[{ num: "11", unit: "명", label: "선수 분석" }, { num: "3", unit: "가지", label: "전술 추천" }, { num: "100", unit: "%", label: "무료 서비스" }].map((s, i) => (
               <div key={i} style={{ textAlign: "center" }}>
                 <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 40, fontWeight: 700, color: "#4ade80", lineHeight: 1 }}>{s.num}{s.unit}</div>
@@ -504,7 +504,7 @@ function LandingPage({ onStart, onDemo }) {
         <section style={{ maxWidth: 1000, margin: "0 auto", padding: "0 24px 60px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
             {[{ name: "역습 축구", icon: "⚡", color: "#ef4444", desc: "빠른 전환과 측면 돌파" }, { name: "점유율 축구", icon: "🔄", color: "#3b82f6", desc: "패스와 볼 점유 지배" }, { name: "압박 축구", icon: "🔥", color: "#f59e0b", desc: "전방 압박으로 볼 탈취" }].map((t, i) => (
-              <div key={i} style={{ background: `${t.color}10`, border: `1px solid ${t.color}33`, borderRadius: 16, padding: "20px", textAlign: "center" }}>
+              <div key={i} className="sq-landing-tactic-card" style={{ background: `${t.color}10`, border: `1px solid ${t.color}33`, borderRadius: 16, padding: "20px", textAlign: "center" }}>
                 <div style={{ fontSize: 30, marginBottom: 10, animation: `float 3s ease infinite`, animationDelay: `${i * 0.5}s` }}>{t.icon}</div>
                 <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 16, fontWeight: 700, color: t.color, marginBottom: 4 }}>{t.name}</div>
                 <div style={{ fontSize: 12, color: "#475569" }}>{t.desc}</div>
@@ -625,8 +625,8 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
   const isComplete = form.name && form.leftFoot && form.rightFoot && PHYSICAL_STATS.every(s => form.physical[s.key]) && config.tech.every(t => form.tech[t.key]) && config.styleSpecific.every(s => form.style[s.key]) && COMMON_STYLE.every(s => form.style[s.key]) && TEAM_INFLUENCE.every(t => form.teamInfluence[t.key]);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "20px 16px" }}>
-      <div style={{ width: "100%", maxWidth: 560, background: "#0d1420", border: `1px solid ${config.color}55`, borderRadius: 20, padding: "28px 24px", marginTop: 20, marginBottom: 20 }}>
+    <div className="sq-popup-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "20px 16px" }}>
+      <div className="sq-popup" style={{ width: "100%", maxWidth: 560, background: "#0d1420", border: `1px solid ${config.color}55`, borderRadius: 20, padding: "28px 24px", marginTop: 20, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -647,7 +647,7 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
         </div>
         <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", marginBottom: 22 }}>
           <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 14 }}>🦶 주발 능력 (5점 만점)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div className="sq-foot-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             <FootRating label="왼발" value={form.leftFoot} onChange={v => setForm(f => ({ ...f, leftFoot: v }))} />
             <FootRating label="오른발" value={form.rightFoot} onChange={v => setForm(f => ({ ...f, rightFoot: v }))} />
           </div>
@@ -1189,10 +1189,10 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, o
           </div>
         )}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.7fr", gap: 14, marginBottom: 20 }}>
+      <div className="sq-guide-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.7fr", gap: 14, marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, textAlign: "center" }}>4-2-3-1 · 선수 클릭</div>
-          <div style={{ position: "relative", width: "100%", paddingBottom: "140%", background: "linear-gradient(180deg,#1a4a2a,#1e5c30,#1a4a2a)", borderRadius: 12, overflow: "hidden", border: `1px solid ${tactic.color}33`, marginBottom: 10 }}>
+          <div className="sq-pitch" style={{ position: "relative", width: "100%", paddingBottom: "140%", background: "linear-gradient(180deg,#1a4a2a,#1e5c30,#1a4a2a)", borderRadius: 12, overflow: "hidden", border: `1px solid ${tactic.color}33`, marginBottom: 10 }}>
             {[...Array(7)].map((_, i) => <div key={i} style={{ position: "absolute", top: `${i * 14.3}%`, left: 0, right: 0, height: "7%", background: i % 2 === 0 ? "rgba(0,0,0,0.08)" : "transparent" }} />)}
             <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} viewBox="0 0 100 140" preserveAspectRatio="none">
               <rect x="4" y="3" width="92" height="134" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.6" />
@@ -1211,7 +1211,7 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, o
               );
             })}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div className="sq-pitch-list" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {FORMATION_4231.map(slot => (
               <button key={slot.id} onClick={() => setSelectedId(slot.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 7, border: `1px solid ${selectedId === slot.id ? `${tactic.color}44` : "rgba(255,255,255,0.04)"}`, background: selectedId === slot.id ? `${tactic.color}10` : "transparent", cursor: "pointer" }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: tactic.color, minWidth: 24 }}>{slot.pos}</span>
@@ -1454,7 +1454,7 @@ function ResultScreen({ result, players, onBack, onSave, onGoTo, canGoTo }) {
           </div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 12, marginBottom: 16 }}>
+      <div className="sq-result-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 12, marginBottom: 16 }}>
         <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.12)", borderRadius: 14, padding: "14px", display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10, alignSelf: "flex-start" }}>📡 팀 역량</div>
           <RadarChart data={radar} accentColor={tactic.color} />
@@ -1779,6 +1779,9 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap');
         * { box-sizing: border-box; }
+        /* 한글은 단어 중간에서 끊지 않습니다 ("스포트라이/트" 방지).
+           대신 한 단어가 칸보다 길면 그때만 강제로 끊어 넘침을 막습니다. */
+        body { word-break: keep-all; overflow-wrap: break-word; }
         input::placeholder { color: #334155; }
         input:focus { outline: none; border-color: #4ade80 !important; }
         button:hover { opacity: 0.88; }
@@ -1788,6 +1791,31 @@ export default function App() {
         @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
         @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+        /* ── 모바일 대응 ─────────────────────────────────────────────
+           이 코드베이스는 스타일을 전부 인라인(style={{...}})으로 씁니다.
+           인라인은 클래스보다 우선순위가 높아서, 폭을 되돌리려면 !important가 필요합니다.
+           그래서 "클래스를 붙이고 여기서 덮어쓰는" 방식으로 처리했습니다. */
+        @media (max-width: 640px) {
+          /* 전술 가이드: 피치 | 지시카드 2열을 세로로 쌓습니다 */
+          .sq-guide-grid  { grid-template-columns: 1fr !important; }
+          .sq-pitch       { max-width: 300px; margin-left: auto !important; margin-right: auto !important; }
+          .sq-pitch-list  { display: grid !important; grid-template-columns: 1fr 1fr; gap: 4px !important; }
+          /* 결과 화면: 레이더 | 강점·보완점 2열도 같이 */
+          .sq-result-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 520px) {
+          /* 선수 입력 팝업: 여백을 줄여 본문 폭을 확보합니다 */
+          .sq-popup-overlay { padding: 12px 8px !important; }
+          .sq-popup         { padding: 20px 14px !important; }
+          .sq-foot-grid     { grid-template-columns: 1fr !important; gap: 14px !important; }
+          .sq-landing-tactic-card { padding: 14px 8px !important; }
+          /* 히어로 통계 3개 — 간격 48px 고정이라 360px에서 넘쳤습니다 */
+          .sq-landing-stats { gap: 20px !important; }
+        }
+        @media (max-width: 380px) {
+          .sq-step-label { font-size: 9px !important; letter-spacing: -0.2px; }
+        }
       `}</style>
 
       {phase !== "landing" && (
@@ -1823,7 +1851,7 @@ export default function App() {
                   }}
                 >
                   <div style={{ height: isNow ? 4 : 3, borderRadius: 2, background: passed ? "#4ade80" : "rgba(255,255,255,0.08)", boxShadow: isNow ? "0 0 8px rgba(74,222,128,0.6)" : "none" }} />
-                  <div style={{ fontSize: 9.5, marginTop: 5, textAlign: "center", whiteSpace: "nowrap", fontWeight: isNow ? 700 : 500, color: isNow ? "#4ade80" : passed ? "#4ade80aa" : clickable ? "#64748b" : "#334155" }}>
+                  <div className="sq-step-label" style={{ fontSize: 9.5, marginTop: 5, textAlign: "center", whiteSpace: "nowrap", fontWeight: isNow ? 700 : 500, color: isNow ? "#4ade80" : passed ? "#4ade80aa" : clickable ? "#64748b" : "#334155" }}>
                     {step.label}
                   </div>
                 </button>
