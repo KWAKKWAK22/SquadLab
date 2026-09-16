@@ -32,7 +32,7 @@ const POS_CONFIG = {
 const PHYSICAL_STATS = [
   { key: "speed",    label: "속도 / 기동력",   icon: "⚡", levels: [{ value: "하", desc: "조깅 페이스" }, { value: "중", desc: "빠른 편" }, { value: "상", desc: "팀 내 최상위권" }] },
   { key: "stamina",  label: "지구력 / 활동량", icon: "🫀", levels: [{ value: "하", desc: "후반 급격히 처짐" }, { value: "중", desc: "90분 무난히 소화" }, { value: "상", desc: "후반에도 스프린트 가능" }] },
-  { key: "physical", label: "피지컬 / 제공권", icon: "💪", levels: [{ value: "하", desc: "몸싸움 회피" }, { value: "중", desc: "버티는 편" }, { value: "상", desc: "적극적 몸싸움 우위" }] },
+  { key: "physical", label: "몸싸움 적극성", icon: "💪", levels: [{ value: "하", desc: "부딪힘을 피함" }, { value: "중", desc: "붙으면 버팀" }, { value: "상", desc: "먼저 부딪힘" }] },
 ];
 
 const COMMON_STYLE = [
@@ -117,6 +117,44 @@ const defaultPlayer = () => ({ name: "", age: "", height: "", weight: "", leftFo
 
 const STAT_S = { "하": 45, "중": 68, "상": 88 };
 
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// ── 피지컬 = 체격 × 얼마나 몸을 쓰는가 ────────────────────────
+// 축구에서 몸싸움은 키·몸무게만으로도, 의지만으로도 결정되지 않습니다.
+// 그래서 키·몸무게로 체격 점수를 내고, 적극성을 계수로 곱합니다.
+// 큰 선수가 안 부딪히면 피지컬이 안 나오고, 작은 선수가 악착같이 붙어도
+// 체격 차이를 다 뒤집지는 못합니다.
+const PHYS_DRIVE = { "하": 0.78, "중": 1, "상": 1.16 };
+
+// 눈금은 동호회 성인 남성 기준입니다. 162cm/55kg를 바닥, 188cm/92kg를 천장으로 둡니다.
+// 몸싸움에서는 체중 쪽이 조금 더 크게 작용한다고 보고 45:55로 섞습니다.
+function frameScore(height, weight) {
+  const h = Number(height), w = Number(weight);
+  if (!Number.isFinite(h) || !Number.isFinite(w) || h <= 0 || w <= 0) return null;
+  const hs = clamp(((h - 162) / 26) * 100, 0, 100);
+  const ws = clamp(((w - 55) / 37) * 100, 0, 100);
+  return 0.45 * hs + 0.55 * ws;
+}
+
+function physicalScore(player) {
+  const frame = frameScore(player?.height, player?.weight);
+  // 키·몸무게가 없는 예전 저장본은 적극성만으로 예전 방식대로 냅니다
+  if (frame === null) return STAT_S[player?.physical?.physical] || 65;
+  const drive = PHYS_DRIVE[player?.physical?.physical] ?? 1;
+  return Math.round(clamp((30 + frame * 0.62) * drive, 35, 95));
+}
+
+// 5점 척도 두 개를 사람이 읽는 말로 바꿉니다.
+// AI에게 "왼발 2"만 던지면 그게 좋은 건지 나쁜 건지 알 수 없습니다.
+function footNote(lf, rf) {
+  if (!lf || !rf) return null;
+  const gap = Math.abs(lf - rf);
+  const strong = lf > rf ? "왼발" : "오른발";
+  if (gap <= 1) return `양발잡이 (왼${lf}/오${rf})`;
+  if (gap >= 3) return `${strong}만 씀 (왼${lf}/오${rf})`;
+  return `${strong} 위주 (왼${lf}/오${rf})`;
+}
+
 // 입력이 3지선다(하/중/상)이므로 화면에도 등급으로 되돌려 보여줍니다.
 // 45/68/88 같은 숫자는 실제보다 정밀해 보이게 만드는 과장 표현이라 쓰지 않습니다.
 // (단, 여러 항목을 합산한 OVR 종합 레이팅은 숫자로 유지합니다)
@@ -130,7 +168,7 @@ function analyzePlayer(player, pos) {
   const theme = POSITION_THEME[pos] || POSITION_THEME["CM"];
   const techVals = Object.values(player.tech || {}).map(v => TECH_SCORE[v] || 65);
   const avgTech = techVals.length ? Math.round(techVals.reduce((a, b) => a + b, 0) / techVals.length) : 65;
-  const s = { speed: STAT_S[player.physical?.speed] || 65, stamina: STAT_S[player.physical?.stamina] || 65, physical: STAT_S[player.physical?.physical] || 65, kick: avgTech, dribble: avgTech, shooting: avgTech, defense: avgTech };
+  const s = { speed: STAT_S[player.physical?.speed] || 65, stamina: STAT_S[player.physical?.stamina] || 65, physical: physicalScore(player), kick: avgTech, dribble: avgTech, shooting: avgTech, defense: avgTech };
   const overall = Math.round((s.speed + s.stamina + s.physical + s.kick + s.dribble + s.shooting + s.defense) / 7);
   const strengths = [], weaknesses = [];
   if (s.speed >= 80) strengths.push("압도적인 스피드"); if (s.stamina >= 80) strengths.push("탁월한 체력"); if (s.physical >= 80) strengths.push("강한 피지컬"); if (avgTech >= 80) strengths.push("뛰어난 기술력");
@@ -153,7 +191,7 @@ function analyzeTeam(players) {
   const avg = arr => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
   const speeds = list.map(p => STAT_S[p.physical?.speed] || 65);
   const staminas = list.map(p => STAT_S[p.physical?.stamina] || 65);
-  const physicals = list.map(p => STAT_S[p.physical?.physical] || 65);
+  const physicals = list.map(p => physicalScore(p));
   const avgSpeed = avg(speeds), avgStamina = avg(staminas), avgPhysical = avg(physicals);
   const avgTech = avg(list.map(p => { const vals = Object.values(p.tech || {}).map(v => TECH_SCORE[v] || 65); return vals.length ? avg(vals) : 65; }));
   const radar = { 공격력: Math.round(avgTech * 0.7 + avgSpeed * 0.3), 수비력: Math.round(avgTech * 0.5 + avgPhysical * 0.5), 스피드: avgSpeed, 체력: avgStamina, 기술력: avgTech };
@@ -199,6 +237,11 @@ function traitsOf(player, pos) {
   const cfg = POS_CONFIG[pos] || POS_CONFIG["CM"];
   const out = [];
   const push = (label, value) => { if (value) out.push(`${label}: ${value}`); };
+  // 아래 셋은 점수 공식에 직접 들어가지는 않지만, AI가 문장을 쓸 때 실마리가 됩니다.
+  // (체격은 피지컬 점수로도 이미 반영되어 있습니다)
+  if (player.height && player.weight) push("체격", `${player.height}cm / ${player.weight}kg`);
+  if (player.age) push("나이", `${player.age}세`);
+  push("주발", footNote(player.leftFoot, player.rightFoot));
   cfg.tech.forEach(t => push(t.label, player.tech?.[t.key]));
   cfg.styleSpecific.forEach(x => push(x.label, player.style?.[x.key]));
   COMMON_STYLE.forEach(x => push(x.label, player.style?.[x.key]));
@@ -231,7 +274,7 @@ function buildRoster(playerMap) {
 // ───────────────────────────────────────────────────────────────
 //  데모 팀 프리셋
 //
-//  선수 한 명당 채워야 할 값이 12개, 11명이면 132개입니다.
+//  선수 한 명당 채워야 할 값이 14개, 11명이면 154개입니다.
 //  선택지 문자열("치달의 달인")을 직접 쓰면 오타 하나로 TECH_SCORE 조회가 실패해
 //  전부 65점으로 뭉개지고, 화면에는 아무 표시도 안 납니다.
 //  그래서 아래 표는 전부 **선택지 번호(0·1·2)** 로만 적고,
@@ -614,7 +657,7 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
   const setTech = (k, v) => setForm(f => ({ ...f, tech: { ...f.tech, [k]: v } }));
   const setStyle = (k, v) => setForm(f => ({ ...f, style: { ...f.style, [k]: v } }));
   const setTI = (k, v) => setForm(f => ({ ...f, teamInfluence: { ...f.teamInfluence, [k]: v } }));
-  const isComplete = form.name && form.leftFoot && form.rightFoot && PHYSICAL_STATS.every(s => form.physical[s.key]) && config.tech.every(t => form.tech[t.key]) && config.styleSpecific.every(s => form.style[s.key]) && COMMON_STYLE.every(s => form.style[s.key]) && TEAM_INFLUENCE.every(t => form.teamInfluence[t.key]);
+  const isComplete = form.name && Number(form.height) > 0 && Number(form.weight) > 0 && form.leftFoot && form.rightFoot && PHYSICAL_STATS.every(s => form.physical[s.key]) && config.tech.every(t => form.tech[t.key]) && config.styleSpecific.every(s => form.style[s.key]) && COMMON_STYLE.every(s => form.style[s.key]) && TEAM_INFLUENCE.every(t => form.teamInfluence[t.key]);
 
   return (
     <div className="sq-popup-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "20px 16px" }}>
@@ -633,9 +676,13 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
         <SectionLabel number={1}>기본 정보</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div style={{ gridColumn: "1 / -1" }}><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="이름" style={{ width: "100%", padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 14 }} /></div>
-          {[{ k: "age", ph: "나이", min: 10, max: 100 }, { k: "height", ph: "키 (cm)", min: 100, max: 220 }, { k: "weight", ph: "몸무게 (kg)", min: 20, max: 200 }].map(f => (
+          {[{ k: "height", ph: "키 (cm)", min: 100, max: 220 }, { k: "weight", ph: "몸무게 (kg)", min: 20, max: 200 }].map(f => (
             <input key={f.k} type="number" min={f.min} max={f.max} value={form[f.k]} onChange={e => setForm(fm => ({ ...fm, [f.k]: e.target.value }))} placeholder={f.ph} style={{ padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 13 }} />
           ))}
+          <input type="number" min={10} max={100} value={form.age} onChange={e => setForm(fm => ({ ...fm, age: e.target.value }))} placeholder="나이 (선택)" style={{ gridColumn: "1 / -1", padding: "10px 14px", background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 13 }} />
+        </div>
+        <div style={{ fontSize: 11, color: "#475569", marginTop: -6, marginBottom: 16, lineHeight: 1.5 }}>
+          키·몸무게는 아래 <b style={{ color: "#94a3b8" }}>몸싸움 적극성</b>과 합쳐져 피지컬 점수가 됩니다.
         </div>
         <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", marginBottom: 22 }}>
           <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 14 }}>🦶 주발 능력 (5점 만점)</div>
