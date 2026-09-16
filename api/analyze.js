@@ -174,7 +174,15 @@ ${computed.tactics.map((t) => `- ${t.name}: ${t.fit}점`).join("\n")}
 - 정해진 문장 수를 반드시 지킬 것. 길게 쓰지 마세요.
 - 선수 ${players.length}명 전원에 대해 빠짐없이 작성할 것.
 - 전술 3개 전부에 대해 작성하되, name은 받은 문자열을 그대로 쓸 것.
-- 능력치가 낮은 선수도 비하하지 말고, 어떻게 활용하면 되는지를 제시할 것.`;
+- 능력치가 낮은 선수도 비하하지 말고, 어떻게 활용하면 되는지를 제시할 것.
+
+[절대 규칙 — 등급과 모순되는 말 금지]
+각 선수의 등급은 위에 이미 적혀 있습니다. 그 등급과 어긋나는 문장은 명백한 오류입니다.
+- **상급인 항목을 약점(weaknesses)이나 보완점으로 쓰지 마세요.**
+  (체력이 상인 선수에게 "평범한 체력", "체력 관리 필요" → 금지)
+- **하급인 항목을 강점(strengths)으로 쓰지 마세요.**
+- comment 문장에서도 마찬가지입니다. 등급을 인용할 거면 위에 적힌 그대로 인용하세요.
+- 쓸 약점이 마땅치 않으면 성향에서 찾으세요. 없는 약점을 지어내지 마세요.`;
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -276,6 +284,28 @@ ${players
   여러 명을 한꺼번에 부르는 문장은 '지목'이 아니라 '전술'로 분류하고 target은 비워 두세요.
   '지목'에 한해 감독이 선수를 부르는 편한 말투(반말)를 써도 됩니다. 나머지는 존댓말입니다.
 - 마지막은 선수들을 경기장으로 내보내는 말로 끝내세요.`;
+}
+
+// ───────────────────────────────────────────────────────────────
+//  등급 모순 검사
+//
+//  AI가 "체력 상"인 선수의 보완점에 "평범한 체력"을 쓰는 일이 실제로 있었습니다.
+//  프롬프트로 금지해도 완전히 막히지는 않으므로, 서버에서 한 번 더 걸러냅니다.
+//  애매한 "중" 등급은 건드리지 않습니다 — 상/하만 명백한 모순입니다.
+// ───────────────────────────────────────────────────────────────
+const STAT_KEYWORDS = {
+  속도: ["속도", "기동력", "스피드", "주력"],
+  체력: ["체력", "지구력", "활동량", "스태미"],
+  피지컬: ["피지컬", "몸싸움", "제공권"],
+  기술: ["기술", "발밑"],
+};
+
+function contradicts(text, grades, kind) {
+  if (!text || !grades) return false;
+  const forbidden = kind === "strength" ? "하" : "상";
+  return Object.keys(STAT_KEYWORDS).some(
+    (stat) => grades[stat] === forbidden && STAT_KEYWORDS[stat].some((w) => text.includes(w))
+  );
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -390,11 +420,24 @@ module.exports = async function handler(req, res) {
       TEAM_SCHEMA
     );
 
-    // 선수 배열을 화면이 쓰기 쉬운 형태({슬롯id: 분석})로 변환
+    // 선수 배열을 화면이 쓰기 쉬운 형태({슬롯id: 분석})로 변환하면서
+    // 등급과 모순되는 강점·보완점을 걸러냅니다.
+    const gradesById = {};
+    for (const p of players) gradesById[String(p.id)] = p.grades || {};
+
     const byId = {};
+    let dropped = 0;
     for (const p of raw.players || []) {
-      if (p && p.id) byId[p.id] = p;
+      if (!p || !p.id) continue;
+      const g = gradesById[String(p.id)];
+      const before = (p.strengths || []).length + (p.weaknesses || []).length;
+      p.strengths = (p.strengths || []).filter((t) => !contradicts(t, g, "strength"));
+      p.weaknesses = (p.weaknesses || []).filter((t) => !contradicts(t, g, "weakness"));
+      dropped += before - p.strengths.length - p.weaknesses.length;
+      byId[p.id] = p;
     }
+    // 전부 걸러져 비면 화면이 알아서 기존 계산식 결과로 되돌아갑니다.
+    if (dropped) console.error("[등급 모순 제거]", dropped, "건");
 
     // ── AI 보정값 검증 (5a) ─────────────────────────────────
     // AI가 ±15를 넘기거나 숫자가 아닌 값을 주는 경우를 서버에서 막습니다.
