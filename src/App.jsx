@@ -444,9 +444,11 @@ function LandingPage({ onStart }) {
 // ═══════════════════════════════════════════════════════════════
 // Phase 0: 팀 설정
 // ═══════════════════════════════════════════════════════════════
-function TeamSetup({ onNext }) {
-  const [teamName, setTeamName] = useState("");
-  const [teamType, setTeamType] = useState(null);
+// 단계 바로 되돌아왔을 때 이미 입력한 값이 그대로 남아 있어야 합니다.
+// 그래서 초기값을 App에서 받습니다.
+function TeamSetup({ initialName, initialType, onNext }) {
+  const [teamName, setTeamName] = useState(initialName || "");
+  const [teamType, setTeamType] = useState(initialType || null);
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 16px 60px" }}>
       <div style={{ textAlign: "center", marginBottom: 40 }}>
@@ -473,7 +475,7 @@ function TeamSetup({ onNext }) {
           ))}
         </div>
       </div>
-      <button onClick={() => teamName && teamType && onNext(teamName)} disabled={!teamName || !teamType} style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: teamName && teamType ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: teamName && teamType ? "#052e16" : "#334155", fontSize: 16, fontWeight: 700, cursor: teamName && teamType ? "pointer" : "not-allowed", letterSpacing: 1 }}>
+      <button onClick={() => teamName && teamType && onNext(teamName, teamType)} disabled={!teamName || !teamType} style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: teamName && teamType ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: teamName && teamType ? "#052e16" : "#334155", fontSize: 16, fontWeight: 700, cursor: teamName && teamType ? "pointer" : "not-allowed", letterSpacing: 1 }}>
         {teamName && teamType ? "포메이션 선택 →" : "팀 이름과 유형을 선택해주세요"}
       </button>
     </div>
@@ -1201,7 +1203,16 @@ function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, onNe
 // ═══════════════════════════════════════════════════════════════
 // Phase 5: 결과 & 공유
 // ═══════════════════════════════════════════════════════════════
-function ResultScreen({ result, players, onBack, showToast }) {
+// 결과 화면에서 한 번에 되돌아갈 수 있는 단계들 (상단 단계 바와 같은 key)
+const RESULT_SHORTCUTS = [
+  { key: "formation",       label: "선수 입력",   icon: "📝" },
+  { key: "player-analysis", label: "개인 분석",   icon: "👤" },
+  { key: "team-analysis",   label: "팀 분석",     icon: "📊" },
+  { key: "tactical-guide",  label: "전술 가이드", icon: "🧭" },
+  { key: "locker-room",     label: "라커룸",      icon: "🗣️" },
+];
+
+function ResultScreen({ result, players, onBack, onSave, onGoTo, canGoTo }) {
   const [isSaved, setIsSaved] = useState(false);
   const { teamName, formation, overallRating, tactic, radar, strengths, weaknesses } = result;
   // 저장된 팀을 불러온 경우 result.players 에 이름이 들어 있습니다.
@@ -1210,15 +1221,10 @@ function ResultScreen({ result, players, onBack, showToast }) {
     ? result.players
     : FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
 
+  // 실제 저장은 App이 합니다 — 선수 입력 원본과 AI 결과가 그쪽 state에 있기 때문입니다
   const handleSave = () => {
     if (isSaved) return;
-    try {
-      const saved = JSON.parse(localStorage.getItem("squadlab_teams") || "[]");
-      const team = { id: Date.now(), savedAt: new Date().toLocaleString("ko-KR"), ...result, players: playerList };
-      localStorage.setItem("squadlab_teams", JSON.stringify([team, ...saved].slice(0, 10)));
-      setIsSaved(true);
-      showToast("💾 팀이 저장되었어요!");
-    } catch { showToast("저장에 실패했어요"); }
+    if (onSave(playerList)) setIsSaved(true);
   };
 
   return (
@@ -1275,6 +1281,29 @@ function ResultScreen({ result, players, onBack, showToast }) {
           ))}
         </div>
       </div>
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: "14px 16px", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10 }}>🔙 다시 보기</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(92px,1fr))", gap: 7 }}>
+          {RESULT_SHORTCUTS.map(sc => {
+            const open = canGoTo(sc.key);
+            return (
+              <button key={sc.key} onClick={() => onGoTo(sc.key)} disabled={!open}
+                style={{ padding: "10px 6px", borderRadius: 10, border: `1px solid ${open ? "rgba(74,222,128,0.22)" : "rgba(255,255,255,0.05)"}`, background: open ? "rgba(74,222,128,0.06)" : "rgba(255,255,255,0.02)", color: open ? "#4ade80" : "#334155", fontSize: 11, fontWeight: 600, cursor: open ? "pointer" : "not-allowed", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 15 }}>{sc.icon}</span>
+                <span style={{ whiteSpace: "nowrap" }}>{sc.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {!canGoTo("player-analysis") && (
+          <div style={{ marginTop: 10, display: "flex", gap: 7, alignItems: "flex-start", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: 9, padding: "9px 10px" }}>
+            <span style={{ fontSize: 11, flexShrink: 0 }}>💡</span>
+            <span style={{ fontSize: 10.5, color: "#fcd34d", lineHeight: 1.55 }}>
+              예전 형식으로 저장된 팀이라 선수 입력값이 남아 있지 않아요. 지금 저장하는 팀부터는 모든 단계를 다시 볼 수 있습니다.
+            </span>
+          </div>
+        )}
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <button type="button" disabled style={{ width: "100%", padding: "14px", borderRadius: 13, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", color: "#475569", fontSize: 14, fontWeight: 700, cursor: "not-allowed", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1, opacity: 0.65 }}>
           🔗 링크 공유 (준비중)
@@ -1282,7 +1311,7 @@ function ResultScreen({ result, players, onBack, showToast }) {
         <button onClick={handleSave} disabled={isSaved} style={{ width: "100%", padding: "14px", borderRadius: 13, border: isSaved ? "1px solid rgba(74,222,128,0.3)" : "none", background: isSaved ? "rgba(74,222,128,0.08)" : "linear-gradient(135deg,#16a34a,#4ade80)", color: isSaved ? "#4ade80" : "#052e16", fontSize: 14, fontWeight: 700, cursor: isSaved ? "default" : "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
           {isSaved ? "✓ 저장됨" : "💾 이 팀 저장하기"}
         </button>
-        <button onClick={onBack} style={{ padding: "12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#475569", fontSize: 13, cursor: "pointer", fontWeight: 500 }}>← 전술 가이드로 돌아가기</button>
+        <button onClick={onBack} style={{ padding: "12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#475569", fontSize: 13, cursor: "pointer", fontWeight: 500 }}>{canGoTo("locker-room") ? "← 라커룸으로 돌아가기" : "← 처음으로 돌아가기"}</button>
       </div>
     </div>
   );
@@ -1351,12 +1380,24 @@ function TeamListModal({ onClose, onLoad }) {
   );
 }
 
+// 상단 단계 바. key는 phase 값과 1:1로 맞춰야 합니다.
+const STEPS = [
+  { key: "team-setup",      label: "팀 설정" },
+  { key: "formation",       label: "선수 입력" },
+  { key: "player-analysis", label: "개인 분석" },
+  { key: "team-analysis",   label: "팀 분석" },
+  { key: "tactical-guide",  label: "전술 가이드" },
+  { key: "locker-room",     label: "라커룸" },
+  { key: "result",          label: "결과" },
+];
+
 // ═══════════════════════════════════════════════════════════════
 // 메인 앱
 // ═══════════════════════════════════════════════════════════════
 export default function App() {
   const [phase, setPhase] = useState("landing");
   const [teamName, setTeamName] = useState("");
+  const [teamType, setTeamType] = useState(null);
   const [players, setPlayers] = useState({});
   const [selectedTactic, setSelectedTactic] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -1367,7 +1408,6 @@ export default function App() {
   const [aiPending, setAiPending] = useState(false);
   const [tacticAi, setTacticAi] = useState(null);        // 2차 AI 결과 — 고른 전술의 개인 지시
   const [tacticAiPending, setTacticAiPending] = useState(false);
-  const [loadedTeam, setLoadedTeam] = useState(false); // 저장본에서 불러온 결과인지
 
   // 선수 입력이 끝났을 때 딱 한 번 호출합니다.
   // 실패해도 절대 화면을 막지 않습니다 — 기존 계산식 결과가 그대로 보입니다.
@@ -1430,26 +1470,89 @@ export default function App() {
   };
 
   const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2800); };
+
+  // ── 단계 이동 ────────────────────────────────────────────────
+  // 상단 단계 바를 클릭해서 앞뒤로 오갈 수 있게 합니다.
+  // 단, 그 화면을 그릴 데이터가 없으면 눌리지 않습니다 (빈 화면 방지).
+  const hasPlayers = FORMATION_4231.some(s => players[s.id]?.name);
+  const canGoTo = (key) => {
+    switch (key) {
+      case "team-setup":       return true;
+      case "formation":        return !!teamName || hasPlayers;
+      case "player-analysis":
+      case "team-analysis":    return hasPlayers;
+      case "tactical-guide":
+      case "locker-room":      return hasPlayers && !!selectedTactic;
+      case "result":           return !!result || (hasPlayers && !!selectedTactic && !!analysis);
+      default:                 return false;
+    }
+  };
+  const goToStep = (key) => {
+    if (!canGoTo(key) || key === phase) return;
+    if (key === "result" && !result) { handleResult(); return; }  // 결과가 아직 없으면 지금 만들어서 이동
+    setPhase(key);
+  };
   const savePlayer = (slotId, data) => setPlayers(prev => ({ ...prev, [slotId]: data }));
 
   const handleTacticSelected = (tactic, analysisData) => {
     setSelectedTactic(tactic);
     setAnalysis(analysisData);
+    // 전술이 바뀌면 이전 결과 화면은 더 이상 맞지 않으므로 버립니다
+    setResult(null);
     // 이미 같은 전술로 받아둔 지시가 있으면 다시 부르지 않습니다 (무료 할당량 절약)
     if (tacticAi?.tacticName !== tactic.name) requestTacticAI(tactic, players);
     setPhase("tactical-guide");
   };
 
   const handleResult = () => {
-    setLoadedTeam(false);
     const playerList = FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
     setResult({ teamName, formation: "4-2-3-1", overallRating: analysis?.overallRating || 70, tactic: { ...selectedTactic, fit: selectedTactic?.fit || 74 }, radar: analysis?.radar || {}, strengths: analysis?.strengths || [], weaknesses: analysis?.weaknesses || [], players: playerList });
     setPhase("result");
   };
 
+  // 저장 (ResultScreen의 버튼이 부릅니다)
+  // v1은 이름·포지션만 저장해서 불러와도 이전 단계로 못 돌아갔습니다.
+  // v2부터 선수 입력 원본과 AI 결과까지 담아, 불러온 뒤에도 모든 단계를 다시 볼 수 있습니다.
+  // (AI를 다시 부르지 않습니다 — 저장해둔 결과를 그대로 씁니다)
+  const handleSaveTeam = (playerList) => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("squadlab_teams") || "[]");
+      const team = {
+        id: Date.now(),
+        savedAt: new Date().toLocaleString("ko-KR"),
+        ...result,
+        players: playerList,
+        snapshot: { version: 2, players, ai, tacticAi, tactic: selectedTactic },
+      };
+      localStorage.setItem("squadlab_teams", JSON.stringify([team, ...saved].slice(0, 10)));
+      showToastMsg("💾 팀이 저장되었어요!");
+      return true;
+    } catch {
+      showToastMsg("저장에 실패했어요");
+      return false;
+    }
+  };
+
   const handleLoadTeam = (team) => {
+    const snap = team.snapshot;
     setResult(team);
-    setLoadedTeam(true);   // 불러온 팀은 이전 단계가 없으므로 뒤로가기 목적지를 바꿉니다
+    setTeamName(team.teamName || "");
+    if (snap?.version >= 2) {
+      // 저장해둔 원본을 그대로 복원 — 어느 단계로든 돌아갈 수 있습니다
+      setPlayers(snap.players || {});
+      setAi(snap.ai || null);
+      setTacticAi(snap.tacticAi || null);
+      setSelectedTactic(snap.tactic || team.tactic || null);
+      const local = analyzeTeam(snap.players || {});
+      setAnalysis(local ? mergeTeamAI(local, snap.ai) : null);
+    } else {
+      // v1 저장본: 이름·포지션밖에 없어 이전 단계를 복원할 수 없습니다
+      setPlayers({});
+      setAi(null);
+      setTacticAi(null);
+      setSelectedTactic(null);
+      setAnalysis(null);
+    }
     setPhase("result");
     showToastMsg(`✓ "${team.teamName}" 불러왔어요!`);
   };
@@ -1484,14 +1587,29 @@ export default function App() {
               💾 저장된 팀
             </button>
           </div>
-          <div style={{ maxWidth: 720, margin: "10px auto 0", display: "flex", gap: 5 }}>
-            {["팀 설정", "선수 입력", "개인 분석", "팀 분석", "전술 가이드", "라커룸", "결과"].map((s, i) => {
-              const idx = { "team-setup": 0, "formation": 1, "player-analysis": 2, "team-analysis": 3, "tactical-guide": 4, "locker-room": 5, "result": 6 }[phase] ?? 0;
+          <div style={{ maxWidth: 720, margin: "8px auto 0", display: "flex", gap: 4 }}>
+            {STEPS.map((step, i) => {
+              const idx = STEPS.findIndex(x => x.key === phase);
+              const passed = idx >= 0 && i <= idx;
+              const isNow = step.key === phase;
+              const open = canGoTo(step.key);          // 그릴 데이터가 있는 단계인가
+              const clickable = open && !isNow;
               return (
-                <div key={s} style={{ flex: 1 }}>
-                  <div style={{ height: 3, borderRadius: 2, background: i <= idx ? "#4ade80" : "rgba(255,255,255,0.08)" }} />
-                  <div style={{ fontSize: 9, color: i <= idx ? "#4ade80" : "#334155", marginTop: 4, textAlign: "center" }}>{s}</div>
-                </div>
+                <button
+                  key={step.key}
+                  onClick={() => goToStep(step.key)}
+                  disabled={!clickable}
+                  title={clickable ? `${step.label} 화면으로 이동` : (isNow ? "현재 화면" : "아직 볼 수 없는 단계예요")}
+                  style={{
+                    flex: 1, background: "transparent", border: "none", padding: "4px 0 7px",
+                    cursor: clickable ? "pointer" : "default", opacity: open || isNow ? 1 : 0.4,
+                  }}
+                >
+                  <div style={{ height: isNow ? 4 : 3, borderRadius: 2, background: passed ? "#4ade80" : "rgba(255,255,255,0.08)", boxShadow: isNow ? "0 0 8px rgba(74,222,128,0.6)" : "none" }} />
+                  <div style={{ fontSize: 9.5, marginTop: 5, textAlign: "center", whiteSpace: "nowrap", fontWeight: isNow ? 700 : 500, color: isNow ? "#4ade80" : passed ? "#4ade80aa" : clickable ? "#64748b" : "#334155" }}>
+                    {step.label}
+                  </div>
+                </button>
               );
             })}
           </div>
@@ -1499,7 +1617,7 @@ export default function App() {
       )}
 
       {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} />}
-      {phase === "team-setup"      && <TeamSetup onNext={name => { setTeamName(name); setPhase("formation"); }} />}
+      {phase === "team-setup"      && <TeamSetup initialName={teamName} initialType={teamType} onNext={(name, type) => { setTeamName(name); setTeamType(type); setPhase("formation"); }} />}
       {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("player-analysis"); }} onBack={() => setPhase("team-setup")} />}
       {phase === "player-analysis" && <PlayerAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={() => setPhase("team-analysis")} onBack={() => setPhase("formation")} />}
       {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("player-analysis")} />}
@@ -1519,7 +1637,7 @@ export default function App() {
           <button onClick={() => setPhase("landing")} style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 14, fontWeight: 700, color: "#052e16", cursor: "pointer" }}>처음으로 돌아가기</button>
         </div>
       )}
-      {phase === "result"          && result && <ResultScreen result={result} players={players} onBack={() => setPhase(loadedTeam ? "landing" : "locker-room")} showToast={showToastMsg} />}
+      {phase === "result"          && result && <ResultScreen result={result} players={players} onSave={handleSaveTeam} onGoTo={goToStep} canGoTo={canGoTo} onBack={() => setPhase(canGoTo("locker-room") ? "locker-room" : "landing")} />}
 
       {showTeamList && <TeamListModal onClose={() => setShowTeamList(false)} onLoad={handleLoadTeam} />}
       <Toast msg={toast} />
