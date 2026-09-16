@@ -228,6 +228,135 @@ function buildRoster(playerMap) {
     });
 }
 
+// ───────────────────────────────────────────────────────────────
+//  데모 팀 프리셋
+//
+//  선수 한 명당 채워야 할 값이 12개, 11명이면 132개입니다.
+//  선택지 문자열("치달의 달인")을 직접 쓰면 오타 하나로 TECH_SCORE 조회가 실패해
+//  전부 65점으로 뭉개지고, 화면에는 아무 표시도 안 납니다.
+//  그래서 아래 표는 전부 **선택지 번호(0·1·2)** 로만 적고,
+//  실제 문자열은 POS_CONFIG에서 꺼내 씁니다. 오타가 구조적으로 불가능합니다.
+//
+//  한 줄 형식:
+//  [이름, 나이, 키, 몸무게, 왼발, 오른발, [속도,체력,피지컬], [기술1,기술2,기술3],
+//   선호움직임, [팀헌신도,위기대처], [리더십,소통,전술이해도]]
+// ───────────────────────────────────────────────────────────────
+const LV = ["하", "중", "상"];
+
+function presetPlayer(pos, spec) {
+  const cfg = POS_CONFIG[pos] || POS_CONFIG["CM"];
+  const [name, age, height, weight, lf, rf, phys, tech, styleIdx, common, infl] = spec;
+  // CB의 선호 움직임과 GK의 플레이 스타일은 선택지가 2개뿐이라 번호를 잘라 줍니다
+  const pick = (opts, i) => opts[Math.min(i, opts.length - 1)];
+  const p = {
+    name, age: String(age), height: String(height), weight: String(weight),
+    leftFoot: lf, rightFoot: rf, physical: {}, tech: {}, style: {}, teamInfluence: {},
+  };
+  PHYSICAL_STATS.forEach((x, i) => { p.physical[x.key] = LV[phys[i]]; });
+  cfg.tech.forEach((x, i) => { p.tech[x.key] = pick(x.options, tech[i]); });
+  cfg.styleSpecific.forEach(x => { p.style[x.key] = pick(x.options, styleIdx); });
+  COMMON_STYLE.forEach((x, i) => { p.style[x.key] = pick(x.options, common[i]); });
+  TEAM_INFLUENCE.forEach((x, i) => { p.teamInfluence[x.key] = pick(x.options, infl[i]); });
+  return p;
+}
+
+function buildDemoSquad(team) {
+  const squad = {};
+  FORMATION_4231.forEach((slot, i) => { squad[slot.id] = presetPlayer(slot.pos, team.squad[i]); });
+  return squad;
+}
+
+const DEMO_TEAMS = [
+  {
+    id: "speed",
+    name: "청춘 FC",
+    label: "20대 초반 · 속도형",
+    tagline: "다 어리고 빠르다. 대신 발밑이 거칠고 전술 이해도가 낮다.",
+    accent: "#ef4444",
+    squad: [
+      ["한도현", 22, 178, 70, 2, 4, [2,2,1], [1,0,1], 1, [1,1], [0,1,0]], // ST 라인 브레이커
+      ["서지훈", 21, 174, 66, 4, 2, [2,2,0], [2,1,0], 0, [1,0], [0,1,0]], // LW 클래식 윙어
+      ["박찬영", 23, 176, 69, 2, 4, [1,2,1], [1,1,1], 1, [1,1], [1,1,1]], // CAM 섀도우 스트라이커
+      ["오세빈", 20, 172, 64, 2, 4, [2,2,0], [2,2,1], 0, [0,1], [0,0,0]], // RW 개인기 좋고 이기적
+      ["김태윤", 22, 180, 74, 3, 3, [1,2,1], [1,1,1], 1, [2,1], [1,1,1]], // CM 박스-투-박스
+      ["노준석", 24, 177, 72, 2, 3, [1,2,1], [1,0,0], 1, [2,1], [1,2,0]], // CM 박스-투-박스
+      ["배시현", 21, 175, 68, 4, 2, [2,2,0], [0,2,1], 0, [1,0], [1,1,0]], // LB 공격형 풀백
+      ["문정후", 23, 185, 80, 2, 4, [1,1,2], [1,0,0], 0, [1,1], [1,1,0]], // CB 파이터형
+      ["신재혁", 22, 182, 77, 3, 3, [2,1,1], [1,1,0], 0, [1,1], [1,1,1]], // CB 파이터형
+      ["조민석", 20, 173, 65, 2, 4, [2,2,0], [1,2,1], 0, [1,1], [0,1,0]], // RB 공격형 풀백
+      ["윤태경", 25, 186, 79, 3, 3, [1,1,1], [1,1,1], 0, [1,1], [1,2,1]], // GK 스위퍼 키퍼
+    ],
+  },
+  {
+    id: "tech",
+    name: "강남 로얄즈",
+    label: "30대 중후반 · 기술형",
+    tagline: "느리다. 대신 발밑과 전술 이해도로 경기를 지배한다.",
+    accent: "#3b82f6",
+    squad: [
+      ["강현우", 36, 180, 78, 3, 4, [0,0,1], [2,2,1], 2, [1,2], [2,2,2]], // ST 펄스 나인
+      ["정대석", 34, 176, 72, 4, 2, [1,1,1], [1,1,2], 0, [1,1], [1,2,2]], // LW 클래식 윙어 (폭 유지)
+      ["홍기범", 35, 174, 70, 3, 5, [0,1,0], [2,2,1], 0, [1,2], [2,2,2]], // CAM 정통 플레이메이커
+      ["백승주", 33, 175, 71, 2, 4, [1,1,1], [1,1,2], 0, [1,1], [1,1,2]], // RW 클래식 윙어
+      ["차인호", 37, 178, 75, 3, 4, [0,1,1], [1,2,2], 2, [2,2], [2,2,2]], // CM 딥라잉 플레이메이커
+      ["노태섭", 34, 181, 77, 3, 3, [0,0,1], [1,1,2], 0, [2,1], [1,1,2]], // CM 홀딩
+      ["유상현", 35, 174, 71, 4, 2, [1,0,1], [1,1,2], 1, [1,1], [1,1,2]], // LB 인버티드 풀백
+      ["민경호", 38, 186, 84, 2, 4, [0,0,2], [2,2,2], 1, [1,2], [2,2,2]], // CB 커맨더형 · 주장
+      ["곽재민", 36, 183, 81, 3, 3, [0,1,2], [1,1,1], 1, [1,1], [1,1,2]], // CB 커맨더형
+      ["서동철", 33, 176, 73, 2, 4, [1,1,1], [1,1,1], 1, [2,1], [1,1,1]], // RB 인버티드 풀백
+      ["진영수", 39, 184, 82, 3, 4, [0,1,1], [1,1,2], 1, [1,2], [1,2,2]], // GK 클래식 키퍼
+    ],
+  },
+  {
+    id: "mixed",
+    name: "목요일 조기축구회",
+    label: "20~40대 혼재 · 애매한 팀",
+    tagline: "능력치는 다 고만고만. 그런데 뛰는 스타일이 제각각이라 답이 안 보인다.",
+    accent: "#f59e0b",
+    squad: [
+      ["고영남", 41, 177, 82, 2, 3, [0,0,2], [1,2,2], 0, [0,1], [0,1,1]], // ST 타겟맨 · 맏형
+      ["류현석", 27, 172, 67, 4, 2, [2,1,0], [2,2,0], 1, [0,0], [0,0,0]], // LW 인버티드 · 이기적
+      ["안대호", 33, 175, 73, 3, 3, [1,1,1], [1,1,1], 2, [1,1], [1,1,1]], // CAM 프리롤
+      ["심우진", 38, 170, 70, 2, 3, [0,1,1], [0,1,2], 0, [2,1], [1,2,1]], // RW 느리지만 택배 크로스
+      ["지승우", 29, 179, 76, 3, 3, [1,2,1], [2,1,1], 1, [2,2], [1,2,2]], // CM 박스-투-박스
+      ["표한결", 45, 173, 74, 2, 3, [0,0,1], [1,2,2], 0, [1,1], [2,2,2]], // CM 홀딩 · 주장
+      ["남기훈", 31, 176, 72, 4, 2, [1,1,1], [1,0,1], 2, [1,1], [1,1,0]], // LB 수비형 풀백
+      ["봉재석", 35, 181, 83, 2, 3, [0,1,2], [2,1,0], 1, [1,1], [1,2,1]], // CB 커맨더형
+      ["하동민", 26, 184, 78, 3, 3, [1,1,1], [1,0,1], 0, [1,0], [0,0,0]], // CB 파이터형
+      ["여준호", 30, 174, 71, 2, 4, [1,1,1], [1,1,1], 0, [1,1], [0,1,1]], // RB 공격형 풀백
+      ["석민찬", 44, 178, 85, 3, 2, [0,0,1], [1,1,1], 1, [1,1], [1,1,1]], // GK 클래식 키퍼
+    ],
+  },
+];
+
+// 데모 팀 고르기 (랜딩 · 선수 입력 화면 양쪽에서 씁니다)
+function DemoPicker({ onPick, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 220, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 560, maxHeight: "86vh", overflowY: "auto", background: "#0d1420", border: "1px solid rgba(74,222,128,0.25)", borderRadius: 20, padding: "22px 20px 24px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#f0fdf4" }}>⚡ 데모 팀으로 둘러보기</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 1.5 }}>11명이 미리 입력된 팀입니다. 팀마다 선수 성향이 달라서 AI가 추천하는 전술도 달라져요.</div>
+          </div>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#64748b", fontSize: 18, cursor: "pointer", width: 34, height: 34, flexShrink: 0 }}>✕</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {DEMO_TEAMS.map(team => (
+            <button key={team.id} onClick={() => onPick(team)} style={{ textAlign: "left", background: "rgba(255,255,255,0.03)", border: `1px solid ${team.accent}33`, borderLeft: `3px solid ${team.accent}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap", marginBottom: 5 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#f0fdf4" }}>{team.name}</span>
+                <span style={{ fontSize: 10.5, color: team.accent, border: `1px solid ${team.accent}44`, borderRadius: 5, padding: "1px 7px" }}>{team.label}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.55 }}>{team.tagline}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 공통 UI
 // ═══════════════════════════════════════════════════════════════
@@ -314,7 +443,7 @@ const LANDING_STEPS = [
   { num: "05", title: "전술 가이드",    desc: "포지션별 역할을 상세히 안내해요",         icon: "🎯" },
 ];
 
-function LandingPage({ onStart }) {
+function LandingPage({ onStart, onDemo }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => { setTimeout(() => setVisible(true), 100); }, []);
   return (
@@ -358,7 +487,9 @@ function LandingPage({ onStart }) {
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", animation: "fadeUp 0.8s ease 0.3s both" }}>
             <button onClick={onStart} style={{ padding: "16px 40px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#16a34a,#4ade80)", color: "#052e16", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1, boxShadow: "0 0 30px rgba(74,222,128,0.3)" }}>⚽ 무료로 시작하기</button>
+            <button onClick={onDemo} style={{ padding: "16px 28px", borderRadius: 14, border: "1px solid rgba(74,222,128,0.35)", background: "rgba(74,222,128,0.07)", color: "#4ade80", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>⚡ 데모 팀 바로 보기</button>
           </div>
+          <div style={{ fontSize: 11.5, color: "#475569", marginTop: 14, animation: "fadeUp 0.8s ease 0.35s both" }}>입력이 번거로우시면 데모 팀으로 30초 만에 결과까지 볼 수 있어요</div>
           <div style={{ display: "flex", justifyContent: "center", gap: 48, marginTop: 60, animation: "fadeUp 0.8s ease 0.4s both" }}>
             {[{ num: "11", unit: "명", label: "선수 분석" }, { num: "3", unit: "가지", label: "전술 추천" }, { num: "100", unit: "%", label: "무료 서비스" }].map((s, i) => (
               <div key={i} style={{ textAlign: "center" }}>
@@ -580,7 +711,7 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
   );
 }
 
-function FormationScreen({ teamName, players, onPlayerSave, onNext, onBack }) {
+function FormationScreen({ teamName, players, onPlayerSave, onNext, onBack, onDemo }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const completedCount = FORMATION_4231.filter(s => players[s.id]?.name).length;
   return (
@@ -592,7 +723,10 @@ function FormationScreen({ teamName, players, onPlayerSave, onNext, onBack }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
         <div style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", borderRadius: 8, padding: "6px 16px", fontSize: 13, fontWeight: 700, color: "#052e16", letterSpacing: 2 }}>4-2-3-1</div>
-        <div style={{ fontSize: 13, color: "#475569" }}>{completedCount} / 11명 완료</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "#475569" }}>{completedCount} / 11명 완료</span>
+          <button onClick={onDemo} style={{ marginLeft: "auto", padding: "6px 13px", borderRadius: 8, border: "1px solid rgba(74,222,128,0.28)", background: "rgba(74,222,128,0.07)", color: "#4ade80", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>⚡ 데모 팀으로 채우기</button>
+        </div>
         <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${(completedCount / 11) * 100}%`, background: "linear-gradient(90deg,#16a34a,#4ade80)", borderRadius: 2, transition: "width 0.4s" }} />
         </div>
@@ -1406,12 +1540,13 @@ export default function App() {
   const [showTeamList, setShowTeamList] = useState(false);
   const [ai, setAi] = useState(null);          // 1차 AI 결과 — 팀·선수·전술 (실패하면 계속 null)
   const [aiPending, setAiPending] = useState(false);
+  const [demoPicker, setDemoPicker] = useState(null);    // "jump"=결과까지 바로, "fill"=입력 화면 채우기
   const [tacticAi, setTacticAi] = useState(null);        // 2차 AI 결과 — 고른 전술의 개인 지시
   const [tacticAiPending, setTacticAiPending] = useState(false);
 
   // 선수 입력이 끝났을 때 딱 한 번 호출합니다.
   // 실패해도 절대 화면을 막지 않습니다 — 기존 계산식 결과가 그대로 보입니다.
-  const requestAI = async (playerMap) => {
+  const requestAI = async (playerMap, nameOverride) => {
     try {
       setAiPending(true);
       setAi(null);
@@ -1423,7 +1558,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          teamName,
+          teamName: nameOverride ?? teamName,
           players: roster,
           computed: { radar: team.radar, tactics: team.tactics.map(t => ({ name: t.name, fit: t.fit })) },
         }),
@@ -1467,6 +1602,24 @@ export default function App() {
     } finally {
       setTacticAiPending(false);
     }
+  };
+
+  // 데모 팀 불러오기. 이전 분석 결과는 전부 버리고 새로 시작합니다.
+  const loadDemoTeam = (team) => {
+    const squad = buildDemoSquad(team);
+    const mode = demoPicker;
+    setDemoPicker(null);
+    setTeamName(team.name);
+    setTeamType("fixed");
+    setPlayers(squad);
+    setAi(null); setTacticAi(null); setAnalysis(null); setSelectedTactic(null); setResult(null);
+    if (mode === "jump") {
+      requestAI(squad, team.name);   // state 반영 전이라 팀 이름을 직접 넘깁니다
+      setPhase("player-analysis");
+    } else {
+      setPhase("formation");
+    }
+    showToastMsg(`⚡ "${team.name}" 선수 11명을 채웠어요!`);
   };
 
   const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2800); };
@@ -1616,9 +1769,9 @@ export default function App() {
         </div>
       )}
 
-      {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} />}
+      {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} onDemo={() => setDemoPicker("jump")} />}
       {phase === "team-setup"      && <TeamSetup initialName={teamName} initialType={teamType} onNext={(name, type) => { setTeamName(name); setTeamType(type); setPhase("formation"); }} />}
-      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("player-analysis"); }} onBack={() => setPhase("team-setup")} />}
+      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("player-analysis"); }} onBack={() => setPhase("team-setup")} onDemo={() => setDemoPicker("fill")} />}
       {phase === "player-analysis" && <PlayerAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={() => setPhase("team-analysis")} onBack={() => setPhase("formation")} />}
       {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("player-analysis")} />}
       {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={() => setPhase("locker-room")} onBack={() => setPhase("team-analysis")} />}
@@ -1640,6 +1793,7 @@ export default function App() {
       {phase === "result"          && result && <ResultScreen result={result} players={players} onSave={handleSaveTeam} onGoTo={goToStep} canGoTo={canGoTo} onBack={() => setPhase(canGoTo("locker-room") ? "locker-room" : "landing")} />}
 
       {showTeamList && <TeamListModal onClose={() => setShowTeamList(false)} onLoad={handleLoadTeam} />}
+      {demoPicker && <DemoPicker onPick={loadDemoTeam} onClose={() => setDemoPicker(null)} />}
       <Toast msg={toast} />
     </div>
   );
