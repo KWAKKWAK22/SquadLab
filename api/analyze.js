@@ -351,9 +351,17 @@ async function callGemini(model, prompt, apiKey, schema) {
 async function askGemini(prompt, apiKey, schema) {
   try {
     return await callGemini(MODEL_PRIMARY, prompt, apiKey, schema);
-  } catch (e) {
-    console.error("[1차 실패]", e.message);
-    return await callGemini(MODEL_FALLBACK, prompt, apiKey, schema);
+  } catch (e1) {
+    console.error("[1차 실패]", e1.message);
+    try {
+      return await callGemini(MODEL_FALLBACK, prompt, apiKey, schema);
+    } catch (e2) {
+      // 둘 중 하나라도 429였으면 "오늘 무료 한도를 다 썼다"로 봅니다.
+      // 화면에서 한도 소진과 그냥 실패를 다르게 안내해야 하는데,
+      // 사람이 읽는 reason 문장만으로는 구분할 수 없어서 따로 표시해 둡니다.
+      if (e1.status === 429 || e2.status === 429) e2.quotaExceeded = true;
+      throw e2;
+    }
   }
 }
 
@@ -362,13 +370,13 @@ async function askGemini(prompt, apiKey, schema) {
 // ───────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ source: "fallback", reason: "POST만 허용됩니다." });
+    return res.status(405).json({ source: "fallback", code: "method", reason: "POST만 허용됩니다." });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     // 키가 없어도 500을 던지지 않습니다. 화면이 깨지면 안 되기 때문입니다.
-    return res.status(200).json({ source: "fallback", reason: "GEMINI_API_KEY 미설정" });
+    return res.status(200).json({ source: "fallback", code: "no-key", reason: "GEMINI_API_KEY 미설정" });
   }
 
   const ip =
@@ -376,7 +384,7 @@ module.exports = async function handler(req, res) {
   if (isRateLimited(ip)) {
     return res
       .status(200)
-      .json({ source: "fallback", reason: "잠시 후 다시 시도해 주세요. (1분에 6회 제한)" });
+      .json({ source: "fallback", code: "rate-limit", reason: "잠시 후 다시 시도해 주세요. (1분에 6회 제한)" });
   }
 
   const mode = (req.body && req.body.mode) || "team";
@@ -386,7 +394,7 @@ module.exports = async function handler(req, res) {
     if (mode === "tactic") {
       const { teamName, tacticName, players } = req.body || {};
       if (!tacticName || !Array.isArray(players) || !players.length) {
-        return res.status(200).json({ source: "fallback", reason: "요청 데이터가 부족합니다." });
+        return res.status(200).json({ source: "fallback", code: "bad-request", reason: "요청 데이터가 부족합니다." });
       }
 
       const raw = await askGemini(
@@ -411,7 +419,7 @@ module.exports = async function handler(req, res) {
     // ── 1차 호출: 팀·선수·전술 분석 (기존 + 5a) ───────────────
     const { teamName, players, computed } = req.body || {};
     if (!Array.isArray(players) || !players.length || !computed || !computed.radar) {
-      return res.status(200).json({ source: "fallback", reason: "요청 데이터가 부족합니다." });
+      return res.status(200).json({ source: "fallback", code: "bad-request", reason: "요청 데이터가 부족합니다." });
     }
 
     const raw = await askGemini(
@@ -478,6 +486,10 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     console.error("[AI 분석 실패]", mode, e.message);
     // 여기까지 오면 화면은 기존 계산식 결과를 그대로 보여줍니다.
-    return res.status(200).json({ source: "fallback", reason: e.message });
+    return res.status(200).json({
+      source: "fallback",
+      code: e.quotaExceeded ? "quota" : e.name === "AbortError" ? "timeout" : "error",
+      reason: e.message,
+    });
   }
 };

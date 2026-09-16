@@ -417,6 +417,39 @@ const StatBar = ({ label, value }) => {
   );
 };
 
+// AI가 실패했을 때 "왜 AI 코멘트가 없는지"를 화면이 스스로 설명하게 합니다.
+// 폴백은 이 서비스의 기본 상태이지 고장이 아닙니다. 다만 아무 표시가 없으면
+// 처음 보는 사람 눈에는 AI가 아예 없는 서비스로 읽힙니다. 그래서 한 줄을 남깁니다.
+const FALLBACK_NOTICE = {
+  quota:        { icon: "⏳", text: "오늘 무료 AI 분석 한도를 다 썼어요. 한국시간 오후 4시쯤 초기화돼요.", retry: false },
+  "rate-limit": { icon: "⏱️", text: "요청이 너무 잦아요. 1분쯤 뒤에 다시 시도해 주세요.",               retry: true  },
+  offline:      { icon: "📡", text: "인터넷 연결이 끊겼어요. 연결을 확인하고 다시 시도해 주세요.",        retry: true  },
+  "no-key":     { icon: "🔑", text: "AI 키가 설정되지 않았어요.",                                      retry: false },
+  timeout:      { icon: "🐢", text: "AI 응답이 너무 오래 걸려 기다리지 않았어요.",                      retry: true  },
+};
+const DEFAULT_NOTICE = { icon: "🤖", text: "AI 코치에 연결하지 못했어요.", retry: true };
+
+function AiFallbackNotice({ error, onRetry, pending }) {
+  if (!error) return null;
+  const n = FALLBACK_NOTICE[error.code] || DEFAULT_NOTICE;
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "11px 13px", marginBottom: 16 }}>
+      <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.5 }}>{n.icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: "#fbbf24", fontWeight: 600, lineHeight: 1.5 }}>{n.text}</div>
+        <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, marginTop: 3 }}>
+          레이팅·적합도 같은 숫자는 그대로예요. AI가 쓰는 문장만 빠진 상태입니다.
+        </div>
+      </div>
+      {n.retry && onRetry && (
+        <button onClick={onRetry} disabled={pending} style={{ flexShrink: 0, alignSelf: "center", padding: "6px 11px", borderRadius: 8, border: "1px solid rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.1)", color: "#fbbf24", fontSize: 11, fontWeight: 700, cursor: pending ? "default" : "pointer", opacity: pending ? 0.5 : 1 }}>
+          {pending ? "부르는 중" : "다시 시도"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const Toast = ({ msg }) => msg ? (
   <div style={{ position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)", background: "#0d1420", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 12, padding: "12px 22px", fontSize: 13, fontWeight: 600, color: "#4ade80", zIndex: 300, whiteSpace: "nowrap", boxShadow: "0 4px 24px rgba(0,0,0,0.5)" }}>
     {msg}
@@ -968,7 +1001,7 @@ function squadHighlights(players, ai) {
   return { aces: ranked.slice(0, 3), needs: ranked.slice(-2).reverse() };
 }
 
-function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
+function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending, aiError, onRetryAi }) {
   const [loading, setLoading] = useState(true);
   const [selectedTactic, setSelectedTactic] = useState(0);
   const [showSquad, setShowSquad] = useState(false);
@@ -994,6 +1027,7 @@ function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
         <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>전력 브리핑</div>
         <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>{teamName} 분석 리포트</div>
       </div>
+      <AiFallbackNotice error={aiError} onRetry={onRetryAi} pending={aiPending} />
       <div style={{ background: "linear-gradient(135deg,rgba(22,163,74,0.12),rgba(96,165,250,0.08))", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 18, padding: "22px", marginBottom: 18, display: "flex", alignItems: "center", gap: 20 }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 60, fontWeight: 700, color: "#4ade80", lineHeight: 1 }}>{analysis.overallRating}</div>
@@ -1150,7 +1184,7 @@ function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
 // ═══════════════════════════════════════════════════════════════
 // Phase 4: 전술 역할 가이드
 // ═══════════════════════════════════════════════════════════════
-function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, onNext, onBack }) {
+function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
   const [selectedId, setSelectedId] = useState(1);
   const tacticData = { ...TACTICAL_ROLES[tactic.name], name: tactic.name };
   const currentSlot = FORMATION_4231.find(s => s.id === selectedId);
@@ -1168,6 +1202,7 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, o
           <div style={{ background: `${tactic.color}18`, border: `1px solid ${tactic.color}44`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 700, color: tactic.color }}>{tactic.icon} {tactic.name} 적용 중</div>
         </div>
       </div>
+      <AiFallbackNotice error={tacticAiError} onRetry={onRetryTacticAi} pending={tacticAiPending} />
       <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${tactic.color}22`, borderRadius: 14, padding: "14px 18px", marginBottom: 18 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: tactic.color, marginBottom: 12 }}>📋 {tactic.name} 팀 전술 요약</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -1324,7 +1359,7 @@ function localTeamTalk(teamName, tactic, players) {
   ];
 }
 
-function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, onNext, onBack }) {
+function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
   const waiting = tacticAiPending && !tacticAi;
   const lines = tacticAi?.lockerRoom?.length
     ? tacticAi.lockerRoom
@@ -1354,6 +1389,7 @@ function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, onNe
           {!tacticAi && !waiting && <span style={{ marginLeft: 8, color: "#475569" }}>· 기본 대본</span>}
         </div>
       </div>
+      <AiFallbackNotice error={tacticAiError} onRetry={onRetryTacticAi} pending={tacticAiPending} />
 
       <div style={{ background: "linear-gradient(180deg,#0b1220,#070c16)", border: `1px solid ${tactic.color}33`, borderRadius: 18, padding: "20px 18px", minHeight: 330, marginBottom: 14 }}>
         {waiting ? (
@@ -1608,6 +1644,10 @@ export default function App() {
   const [demoPicker, setDemoPicker] = useState(null);    // "jump"=결과까지 바로, "fill"=입력 화면 채우기
   const [tacticAi, setTacticAi] = useState(null);        // 2차 AI 결과 — 고른 전술의 개인 지시
   const [tacticAiPending, setTacticAiPending] = useState(false);
+  // 실패를 눈에 보이게 하려면 "실패했다"는 사실을 어딘가 들고 있어야 합니다.
+  // 지금까지는 console.warn만 찍고 버려서 화면이 알 방법이 없었습니다.
+  const [aiError, setAiError] = useState(null);              // 1차(팀 분석) 실패
+  const [tacticAiError, setTacticAiError] = useState(null);  // 2차(전술 지시·라커룸) 실패
 
   // 선수 입력이 끝났을 때 딱 한 번 호출합니다.
   // 실패해도 절대 화면을 막지 않습니다 — 기존 계산식 결과가 그대로 보입니다.
@@ -1615,9 +1655,12 @@ export default function App() {
     try {
       setAiPending(true);
       setAi(null);
+      setAiError(null);
       const roster = buildRoster(playerMap);
       const team = analyzeTeam(playerMap);
       if (!roster.length || !team) return;
+      // 오프라인이면 25초를 기다릴 이유가 없습니다. 바로 알려주고 끝냅니다.
+      if (navigator.onLine === false) { setAiError({ code: "offline" }); return; }
 
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -1630,8 +1673,10 @@ export default function App() {
       });
       const data = await res.json();
       if (data.source === "ai") setAi(data);
-      else console.warn("[AI 폴백]", data.reason);
+      else { setAiError({ code: data.code || "error", reason: data.reason }); console.warn("[AI 폴백]", data.reason); }
     } catch (e) {
+      // 서버가 HTML 오류 페이지를 돌려주면 res.json()이 여기서 터집니다 (502 등)
+      setAiError({ code: navigator.onLine === false ? "offline" : "error", reason: e.message });
       console.warn("[AI 폴백]", e.message);
     } finally {
       setAiPending(false);
@@ -1645,6 +1690,8 @@ export default function App() {
     try {
       setTacticAiPending(true);
       setTacticAi(null);
+      setTacticAiError(null);
+      if (navigator.onLine === false) { setTacticAiError({ code: "offline" }); return; }
       const guide = TACTICAL_ROLES[tactic.name]?.positions || {};
       const roster = buildRoster(playerMap).map(p => ({
         ...p,
@@ -1661,8 +1708,9 @@ export default function App() {
       });
       const data = await res.json();
       if (data.source === "ai") setTacticAi(data);
-      else console.warn("[전술 AI 폴백]", data.reason);
+      else { setTacticAiError({ code: data.code || "error", reason: data.reason }); console.warn("[전술 AI 폴백]", data.reason); }
     } catch (e) {
+      setTacticAiError({ code: navigator.onLine === false ? "offline" : "error", reason: e.message });
       console.warn("[전술 AI 폴백]", e.message);
     } finally {
       setTacticAiPending(false);
@@ -1678,6 +1726,7 @@ export default function App() {
     setTeamType("fixed");
     setPlayers(squad);
     setAi(null); setTacticAi(null); setAnalysis(null); setSelectedTactic(null); setResult(null);
+    setAiError(null); setTacticAiError(null);
     if (mode === "jump") {
       requestAI(squad, team.name);   // state 반영 전이라 팀 이름을 직접 넘깁니다
       setPhase("team-analysis");
@@ -1753,6 +1802,7 @@ export default function App() {
   const handleLoadTeam = (team) => {
     const snap = team.snapshot;
     setResult(team);
+    setAiError(null); setTacticAiError(null);   // 저장본은 AI를 다시 부르지 않습니다
     setTeamName(team.teamName || "");
     if (snap?.version >= 2) {
       // 저장해둔 원본을 그대로 복원 — 어느 단계로든 돌아갈 수 있습니다
@@ -1864,8 +1914,8 @@ export default function App() {
       {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} onDemo={() => setDemoPicker("jump")} />}
       {phase === "team-setup"      && <TeamSetup initialName={teamName} initialType={teamType} onNext={(name, type) => { setTeamName(name); setTeamType(type); setPhase("formation"); }} />}
       {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("team-analysis"); }} onBack={() => setPhase("team-setup")} onDemo={() => setDemoPicker("fill")} />}
-      {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("formation")} />}
-      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={() => setPhase("locker-room")} onBack={() => setPhase("team-analysis")} />}
+      {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} aiError={aiError} onRetryAi={() => requestAI(players)} onNext={handleTacticSelected} onBack={() => setPhase("formation")} />}
+      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase("team-analysis")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🧭</div>
@@ -1873,7 +1923,7 @@ export default function App() {
           <button onClick={() => setPhase("landing")} style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 14, fontWeight: 700, color: "#052e16", cursor: "pointer" }}>처음으로 돌아가기</button>
         </div>
       )}
-      {phase === "locker-room"     && selectedTactic && <LockerRoom players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={handleResult} onBack={() => setPhase("tactical-guide")} />}
+      {phase === "locker-room"     && selectedTactic && <LockerRoom players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={handleResult} onBack={() => setPhase("tactical-guide")} />}
       {phase === "locker-room"     && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🗣️</div>
