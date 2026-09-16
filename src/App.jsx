@@ -850,15 +850,22 @@ function PlayerCard({ player, slot, ai, aiPending }) {
   );
 }
 
-function PlayerAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
-  const [current, setCurrent] = useState(0);
+// 선수단 전체 11명 상세.
+// 원래는 독립 단계였는데, 11장을 다 넘겨야 다음으로 갈 수 있어 이탈 지점이었습니다.
+// 전력 브리핑 안에서 필요할 때만 펼치는 상세 보기로 접어 넣었습니다.
+function SquadDetailModal({ players, teamName, onClose, ai, aiPending, startIndex = 0 }) {
+  const [current, setCurrent] = useState(startIndex);
   const slots = FORMATION_4231;
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 16px 60px" }}>
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>개인 선수 분석</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#f0fdf4" }}>{teamName} 선수단 리포트</div>
-        <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>선수를 클릭하거나 좌우 버튼으로 넘겨보세요</div>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 210, overflowY: "auto", padding: "20px 0" }}>
+    <div onClick={e => e.stopPropagation()} style={{ maxWidth: 680, margin: "0 auto", padding: "0 16px 40px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 18, position: "sticky", top: 0, background: "linear-gradient(180deg,#060b14 70%,transparent)", paddingTop: 6, paddingBottom: 10, zIndex: 2 }}>
+        <div>
+          <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>개인 선수 분석</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#f0fdf4" }}>{teamName} 선수단 리포트</div>
+          <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>선수를 클릭하거나 좌우 버튼으로 넘겨보세요</div>
+        </div>
+        <button onClick={onClose} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#94a3b8", fontSize: 18, cursor: "pointer", width: 36, height: 36, flexShrink: 0 }}>✕</button>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
         <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0} style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.1)", background: current === 0 ? "rgba(255,255,255,0.02)" : "rgba(74,222,128,0.1)", color: current === 0 ? "#334155" : "#4ade80", fontSize: 20, cursor: current === 0 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
@@ -879,10 +886,8 @@ function PlayerAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
           {slots.map(slot => <div key={slot.id} style={{ minWidth: "100%" }}><PlayerCard player={players[slot.id] || {}} slot={slot} ai={ai?.players?.[slot.id]} aiPending={aiPending} /></div>)}
         </div>
       </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
-        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 선수 수정</button>
-        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#4ade80)", color: "#052e16", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>팀 전체 분석 →</button>
-      </div>
+      <button onClick={onClose} style={{ width: "100%", marginTop: 20, padding: "13px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#4ade80)", color: "#052e16", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>✓ 브리핑으로 돌아가기</button>
+    </div>
     </div>
   );
 }
@@ -945,10 +950,30 @@ function mergeTeamAI(local, ai) {
   };
 }
 
+// 11명을 OVR 순으로 세워 에이스와 보완 대상을 뽑습니다.
+function squadHighlights(players, ai) {
+  const ranked = FORMATION_4231
+    .filter(slot => players[slot.id]?.name)
+    .map(slot => {
+      const local = analyzePlayer(players[slot.id], slot.pos);
+      const a = ai?.players?.[slot.id];
+      return {
+        id: slot.id, pos: slot.pos, name: players[slot.id].name, overall: local.overall,
+        tags: (a?.strengths?.length ? a.strengths : local.strengths).slice(0, 2),
+        gaps: (a?.weaknesses?.length ? a.weaknesses : local.weaknesses).slice(0, 2),
+      };
+    })
+    .sort((a, b) => b.overall - a.overall);
+  if (ranked.length < 5) return { aces: ranked, needs: [] };
+  return { aces: ranked.slice(0, 3), needs: ranked.slice(-2).reverse() };
+}
+
 function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
   const [loading, setLoading] = useState(true);
   const [selectedTactic, setSelectedTactic] = useState(0);
+  const [showSquad, setShowSquad] = useState(false);
   const analysis = mergeTeamAI(analyzeTeam(players), ai);
+  const highlights = squadHighlights(players, ai);
   useEffect(() => { const t = setTimeout(() => setLoading(false), 2000); return () => clearTimeout(t); }, []);
 
   if (loading || aiPending) return (
@@ -966,7 +991,7 @@ function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 16px 60px" }}>
       <div style={{ marginBottom: 22 }}>
-        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>팀 전체 분석</div>
+        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>전력 브리핑</div>
         <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>{teamName} 분석 리포트</div>
       </div>
       <div style={{ background: "linear-gradient(135deg,rgba(22,163,74,0.12),rgba(96,165,250,0.08))", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 18, padding: "22px", marginBottom: 18, display: "flex", alignItems: "center", gap: 20 }}>
@@ -990,6 +1015,41 @@ function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.12)", borderRadius: 16, padding: "18px", marginBottom: 18, display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 14, alignSelf: "flex-start" }}>📡 팀 역량 레이더</div>
         <RadarChart data={analysis.radar} />
+      </div>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#f0fdf4" }}>👥 선수단 하이라이트</div>
+          <div style={{ fontSize: 11, color: "#475569" }}>11명 중 눈에 띄는 선수</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 10 }}>
+          {highlights.aces.map(p => (
+            <div key={p.id} onClick={() => setShowSquad(p.id)} style={{ background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.18)", borderRadius: 12, padding: "11px 13px", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginBottom: 5 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#4ade80" }}>{p.pos}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: "#f0fdf4" }}>{p.name}</span>
+                <span style={{ marginLeft: "auto", fontFamily: "'Rajdhani',sans-serif", fontSize: 17, fontWeight: 700, color: "#4ade80" }}>{p.overall}</span>
+              </div>
+              <div style={{ fontSize: 10.5, color: "#94a3b8", lineHeight: 1.5 }}>{p.tags.join(" · ")}</div>
+            </div>
+          ))}
+        </div>
+        {highlights.needs.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 10 }}>
+            {highlights.needs.map(p => (
+              <div key={p.id} onClick={() => setShowSquad(p.id)} style={{ background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.16)", borderRadius: 12, padding: "11px 13px", cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginBottom: 5 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b" }}>{p.pos}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: "#e2e8f0" }}>{p.name}</span>
+                  <span style={{ marginLeft: "auto", fontFamily: "'Rajdhani',sans-serif", fontSize: 17, fontWeight: 700, color: "#f59e0b" }}>{p.overall}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: "#94a3b8", lineHeight: 1.5 }}>{p.gaps.join(" · ")}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={() => setShowSquad(true)} style={{ width: "100%", padding: "11px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.03)", color: "#94a3b8", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+          👥 선수단 11명 전체 리포트 보기
+        </button>
       </div>
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "#4ade80", marginBottom: 10 }}>💪 팀 강점</div>
@@ -1070,8 +1130,15 @@ function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
           ))}
         </div>
       </div>
+      {showSquad && (
+        <SquadDetailModal
+          players={players} teamName={teamName} ai={ai} aiPending={aiPending}
+          startIndex={Math.max(0, FORMATION_4231.findIndex(s => s.id === showSquad))}
+          onClose={() => setShowSquad(false)}
+        />
+      )}
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 개인 분석</button>
+        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 선수 수정</button>
         <button onClick={() => onNext(analysis.tactics[selectedTactic], analysis)} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#16a34a,#4ade80)", color: "#052e16", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
           {analysis.tactics[selectedTactic]?.name} 전술로 →
         </button>
@@ -1340,8 +1407,7 @@ function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, onNe
 // 결과 화면에서 한 번에 되돌아갈 수 있는 단계들 (상단 단계 바와 같은 key)
 const RESULT_SHORTCUTS = [
   { key: "formation",       label: "선수 입력",   icon: "📝" },
-  { key: "player-analysis", label: "개인 분석",   icon: "👤" },
-  { key: "team-analysis",   label: "팀 분석",     icon: "📊" },
+  { key: "team-analysis",   label: "전력 브리핑", icon: "📊" },
   { key: "tactical-guide",  label: "전술 가이드", icon: "🧭" },
   { key: "locker-room",     label: "라커룸",      icon: "🗣️" },
 ];
@@ -1429,7 +1495,7 @@ function ResultScreen({ result, players, onBack, onSave, onGoTo, canGoTo }) {
             );
           })}
         </div>
-        {!canGoTo("player-analysis") && (
+        {!canGoTo("team-analysis") && (
           <div style={{ marginTop: 10, display: "flex", gap: 7, alignItems: "flex-start", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: 9, padding: "9px 10px" }}>
             <span style={{ fontSize: 11, flexShrink: 0 }}>💡</span>
             <span style={{ fontSize: 10.5, color: "#fcd34d", lineHeight: 1.55 }}>
@@ -1518,8 +1584,7 @@ function TeamListModal({ onClose, onLoad }) {
 const STEPS = [
   { key: "team-setup",      label: "팀 설정" },
   { key: "formation",       label: "선수 입력" },
-  { key: "player-analysis", label: "개인 분석" },
-  { key: "team-analysis",   label: "팀 분석" },
+  { key: "team-analysis",   label: "전력 브리핑" },
   { key: "tactical-guide",  label: "전술 가이드" },
   { key: "locker-room",     label: "라커룸" },
   { key: "result",          label: "결과" },
@@ -1615,7 +1680,7 @@ export default function App() {
     setAi(null); setTacticAi(null); setAnalysis(null); setSelectedTactic(null); setResult(null);
     if (mode === "jump") {
       requestAI(squad, team.name);   // state 반영 전이라 팀 이름을 직접 넘깁니다
-      setPhase("player-analysis");
+      setPhase("team-analysis");
     } else {
       setPhase("formation");
     }
@@ -1632,7 +1697,6 @@ export default function App() {
     switch (key) {
       case "team-setup":       return true;
       case "formation":        return !!teamName || hasPlayers;
-      case "player-analysis":
       case "team-analysis":    return hasPlayers;
       case "tactical-guide":
       case "locker-room":      return hasPlayers && !!selectedTactic;
@@ -1771,9 +1835,8 @@ export default function App() {
 
       {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} onDemo={() => setDemoPicker("jump")} />}
       {phase === "team-setup"      && <TeamSetup initialName={teamName} initialType={teamType} onNext={(name, type) => { setTeamName(name); setTeamType(type); setPhase("formation"); }} />}
-      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("player-analysis"); }} onBack={() => setPhase("team-setup")} onDemo={() => setDemoPicker("fill")} />}
-      {phase === "player-analysis" && <PlayerAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={() => setPhase("team-analysis")} onBack={() => setPhase("formation")} />}
-      {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("player-analysis")} />}
+      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("team-analysis"); }} onBack={() => setPhase("team-setup")} onDemo={() => setDemoPicker("fill")} />}
+      {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("formation")} />}
       {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={() => setPhase("locker-room")} onBack={() => setPhase("team-analysis")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
