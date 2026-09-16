@@ -21,3 +21,10 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# vercel
+.vercel
+
+# API 테스트 결과 (임시 파일)
+ai-response.json
+.env

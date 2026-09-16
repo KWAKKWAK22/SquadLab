@@ -48,16 +48,18 @@ const TEAM_INFLUENCE = [
 
 const TECH_SCORE = { "약함": 42, "보통": 65, "강함": 87, "느림": 42, "치달의 달인": 87, "백패스 위주": 42, "간결한 탈압박": 65, "크랙 (파괴자)": 87, "부정확": 42, "평범": 65, "택배 크로스": 87, "평범함": 42, "시야 넓음": 65, "대지를 가르는 패스": 87, "투박함": 42, "무난함": 65, "유려한 발밑": 87, "시도 안함": 42, "위협적": 65, "대포알": 87, "조심스러움": 42, "깔끔함": 65, "진공청소기": 87, "늦음": 42, "예측력 좋음": 65, "길목 차단 달인": 87, "짧은 패스 위주": 42, "안정적": 65, "롱패스 능함": 87, "잘 뚫림": 42, "끈질김": 65, "통곡의 벽": 87, "수비 집중": 42, "적절한 타이밍": 65, "지치지 않는 체력": 87, "아쉬움": 42, "날카로움": 87, "안정적인 짧은 패스": 65, "롱패스 빌드업": 87, "조용함": 42, "라인 컨트롤 능함": 65, "수비진의 사령관": 87, "걷어내기 위주": 42, "슈퍼세이브": 87, "완벽한 제공권": 87, "정확한 배급": 87, "잘 밀림": 42, "버팀": 65, "철벽 키핑": 87, "타점 높음": 87, "원샷원킬": 87, "제공권 장악": 87 };
 
-const PLAYER_COMPARISONS = {
-  GK: { name: "알리송 베커",            club: "리버풀",              color: "#1a3a6b", accent: "#f0c040" },
-  LW: { name: "킬리안 음바페",          club: "레알 마드리드",       color: "#003087", accent: "#ffd700" },
-  CAM:{ name: "마르틴 외데고르",         club: "아스널",              color: "#ef0107", accent: "#ffffff" },
-  RW: { name: "모하메드 살라",           club: "리버풀",              color: "#1a3a6b", accent: "#f0c040" },
-  CM: { name: "케빈 데브라위너",         club: "맨체스터 시티",       color: "#6cabdd", accent: "#ffffff" },
-  LB: { name: "앤드류 로버트슨",         club: "리버풀",              color: "#1a3a6b", accent: "#f0c040" },
-  CB: { name: "버질 판다이크",           club: "리버풀",              color: "#1a3a6b", accent: "#f0c040" },
-  RB: { name: "트렌트 알렉산더-아놀드", club: "레알 마드리드",       color: "#003087", accent: "#ffd700" },
-  ST: { name: "에를링 홀란드",           club: "맨체스터 시티",       color: "#6cabdd", accent: "#ffffff" },
+// 포지션별 카드 색 테마 (TACTICAL_ROLES의 포지션 색 팔레트와 동일 계열)
+// color = 카드 배경 그라데이션 시작색, accent = 강조색(OVR 숫자·테두리·라벨)
+const POSITION_THEME = {
+  ST: { color: "#3f1010", accent: "#ef4444" },
+  LW: { color: "#3f2a08", accent: "#f59e0b" },
+  RW: { color: "#3f2a08", accent: "#f59e0b" },
+  CAM:{ color: "#2a1f4d", accent: "#a78bfa" },
+  CM: { color: "#11284a", accent: "#60a5fa" },
+  LB: { color: "#0d3320", accent: "#4ade80" },
+  RB: { color: "#0d3320", accent: "#4ade80" },
+  CB: { color: "#0b332a", accent: "#34d399" },
+  GK: { color: "#1e293b", accent: "#94a3b8" },
 };
 
 const TACTICAL_ROLES = {
@@ -114,19 +116,28 @@ const TACTICAL_ROLES = {
 const defaultPlayer = () => ({ name: "", age: "", height: "", weight: "", leftFoot: null, rightFoot: null, physical: {}, tech: {}, style: {}, teamInfluence: {} });
 
 const STAT_S = { "하": 45, "중": 68, "상": 88 };
+
+// 입력이 3지선다(하/중/상)이므로 화면에도 등급으로 되돌려 보여줍니다.
+// 45/68/88 같은 숫자는 실제보다 정밀해 보이게 만드는 과장 표현이라 쓰지 않습니다.
+// (단, 여러 항목을 합산한 OVR 종합 레이팅은 숫자로 유지합니다)
+const GRADES = [
+  { min: 0,  label: "하", level: 1, color: "#ef4444" },
+  { min: 58, label: "중", level: 2, color: "#f59e0b" },
+  { min: 79, label: "상", level: 3, color: "#4ade80" },
+];
+const gradeOf = (v) => GRADES.filter(g => v >= g.min).pop() || GRADES[0];
 function analyzePlayer(player, pos) {
-  const comp = PLAYER_COMPARISONS[pos] || PLAYER_COMPARISONS["CM"];
+  const theme = POSITION_THEME[pos] || POSITION_THEME["CM"];
   const techVals = Object.values(player.tech || {}).map(v => TECH_SCORE[v] || 65);
   const avgTech = techVals.length ? Math.round(techVals.reduce((a, b) => a + b, 0) / techVals.length) : 65;
   const s = { speed: STAT_S[player.physical?.speed] || 65, stamina: STAT_S[player.physical?.stamina] || 65, physical: STAT_S[player.physical?.physical] || 65, kick: avgTech, dribble: avgTech, shooting: avgTech, defense: avgTech };
   const overall = Math.round((s.speed + s.stamina + s.physical + s.kick + s.dribble + s.shooting + s.defense) / 7);
-  const similarity = Math.min(93, Math.max(58, overall - 3 + Math.floor(Math.random() * 12)));
   const strengths = [], weaknesses = [];
   if (s.speed >= 80) strengths.push("압도적인 스피드"); if (s.stamina >= 80) strengths.push("탁월한 체력"); if (s.physical >= 80) strengths.push("강한 피지컬"); if (avgTech >= 80) strengths.push("뛰어난 기술력");
   if (s.speed <= 55) weaknesses.push("기동력 부족"); if (s.stamina <= 55) weaknesses.push("체력 관리 필요"); if (avgTech <= 55) weaknesses.push("기술 향상 필요");
   if (!strengths.length) strengths.push("균형잡힌 올라운더");
   if (!weaknesses.length) weaknesses.push("뚜렷한 약점 없음");
-  return { comp, overall, similarity, stats: s, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 2) };
+  return { theme, overall, stats: s, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 2) };
 }
 
 function analyzeTeam(players) {
@@ -202,17 +213,22 @@ const StyleBtn = ({ opt, active, onClick, color }) => (
   </button>
 );
 
-const StatBar = ({ label, value, color = "#4ade80" }) => (
-  <div style={{ marginBottom: 8 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-      <span style={{ fontSize: 11, color: "#94a3b8" }}>{label}</span>
-      <span style={{ fontSize: 11, fontWeight: 700, color }}>{value}</span>
+const StatBar = ({ label, value }) => {
+  const g = gradeOf(value);
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+        <span style={{ fontSize: 11, color: "#94a3b8" }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: g.color }}>{g.label}</span>
+      </div>
+      <div style={{ display: "flex", gap: 3 }}>
+        {[1, 2, 3].map(n => (
+          <div key={n} style={{ flex: 1, height: 5, borderRadius: 3, background: n <= g.level ? g.color : "rgba(255,255,255,0.08)" }} />
+        ))}
+      </div>
     </div>
-    <div style={{ height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
-      <div style={{ height: "100%", width: `${value}%`, background: `linear-gradient(90deg,${color}88,${color})`, borderRadius: 3 }} />
-    </div>
-  </div>
-);
+  );
+};
 
 const Toast = ({ msg }) => msg ? (
   <div style={{ position: "fixed", bottom: 32, left: "50%", transform: "translateX(-50%)", background: "#0d1420", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 12, padding: "12px 22px", fontSize: 13, fontWeight: 600, color: "#4ade80", zIndex: 300, whiteSpace: "nowrap", boxShadow: "0 4px 24px rgba(0,0,0,0.5)" }}>
@@ -225,7 +241,7 @@ const Toast = ({ msg }) => msg ? (
 // ═══════════════════════════════════════════════════════════════
 const LANDING_FEATURES = [
   { icon: "⚽", title: "포메이션 기반 입력", desc: "4-2-3-1 포메이션에서 포지션을 직접 클릭해 선수 정보를 입력해요" },
-  { icon: "🃏", title: "FIFA 카드 스타일 분석", desc: "각 선수를 유명 선수와 비교 분석해 직관적으로 보여줘요" },
+  { icon: "🃏", title: "선수 개인 분석", desc: "선수별 능력치와 AI 코멘트를 카드 한 장으로 정리해 보여줘요" },
   { icon: "📡", title: "팀 역량 레이더 차트", desc: "11명 데이터를 종합해 팀 강점/약점을 한눈에 파악해요" },
   { icon: "🧠", title: "AI 전술 추천", desc: "역습/점유율/압박 중 우리 팀에 맞는 전술을 추천해드려요" },
   { icon: "📋", title: "포지션별 역할 가이드", desc: "선택한 전술에 맞게 각 선수의 역할과 임무를 알려줘요" },
@@ -235,7 +251,7 @@ const LANDING_FEATURES = [
 const LANDING_STEPS = [
   { num: "01", title: "팀 정보 입력",   desc: "팀 이름과 유형을 설정해요",              icon: "🏆" },
   { num: "02", title: "선수 정보 입력", desc: "포지션별 맞춤 질문으로 11명을 입력해요", icon: "📝" },
-  { num: "03", title: "개인 분석",      desc: "각 선수를 FIFA 카드로 분석해요",          icon: "🃏" },
+  { num: "03", title: "개인 분석",      desc: "선수별 능력치와 AI 코멘트를 정리해요",    icon: "🃏" },
   { num: "04", title: "팀 분석",        desc: "팀 강점/약점과 전술을 추천해요",          icon: "📡" },
   { num: "05", title: "전술 가이드",    desc: "포지션별 역할을 상세히 안내해요",         icon: "🎯" },
 ];
@@ -571,40 +587,47 @@ function FormationScreen({ teamName, players, onPlayerSave, onNext, onBack }) {
 // ═══════════════════════════════════════════════════════════════
 // Phase 2: 개인 선수 분석 슬라이더
 // ═══════════════════════════════════════════════════════════════
-function PlayerCard({ player, slot }) {
-  const { comp, overall, similarity, stats, strengths, weaknesses } = analyzePlayer(player, slot.pos);
+function PlayerCard({ player, slot, ai, aiPending }) {
+  const local = analyzePlayer(player, slot.pos);
+  const { theme, overall, stats } = local;
+  // AI 결과가 오면 문구만 교체 — 숫자(OVR·스탯)는 항상 코드 계산값을 씀
+  const strengths  = ai?.strengths?.length  ? ai.strengths  : local.strengths;
+  const weaknesses = ai?.weaknesses?.length ? ai.weaknesses : local.weaknesses;
+  const comment = ai?.comment;
+  const localSummary = `${local.strengths[0]} 유형입니다. 아래 능력치를 참고하세요.`;
   return (
     <div style={{ minWidth: "100%", padding: "0 2px" }}>
-      <div style={{ background: `linear-gradient(145deg,${comp.color} 0%,#0a0e1a 65%)`, border: `2px solid ${comp.accent}44`, borderRadius: 20, padding: "22px 18px", position: "relative", overflow: "hidden", marginBottom: 12 }}>
-        <div style={{ position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: `${comp.accent}08` }} />
+      <div style={{ background: `linear-gradient(145deg,${theme.color} 0%,#0a0e1a 65%)`, border: `2px solid ${theme.accent}44`, borderRadius: 20, padding: "22px 18px", position: "relative", overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: `${theme.accent}08` }} />
         <div style={{ position: "relative" }}>
-          <span style={{ background: `${comp.accent}22`, border: `1px solid ${comp.accent}55`, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, color: comp.accent, letterSpacing: 1, display: "inline-block", marginBottom: 12 }}>{slot.pos}</span>
+          <span style={{ background: `${theme.accent}22`, border: `1px solid ${theme.accent}55`, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, color: theme.accent, letterSpacing: 1, display: "inline-block", marginBottom: 12 }}>{slot.pos}</span>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             <div style={{ textAlign: "center", minWidth: 72 }}>
-              <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 52, fontWeight: 700, color: comp.accent, lineHeight: 1 }}>{overall}</div>
-              <div style={{ fontSize: 10, color: `${comp.accent}88`, marginTop: 3, letterSpacing: 1 }}>OVR</div>
+              <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 52, fontWeight: 700, color: theme.accent, lineHeight: 1 }}>{overall}</div>
+              <div style={{ fontSize: 10, color: `${theme.accent}88`, marginTop: 3, letterSpacing: 1 }}>OVR</div>
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 3 }}>
-                {[["PAC", stats.speed], ["STA", stats.stamina], ["PHY", stats.physical]].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", gap: 5 }}><span style={{ fontSize: 9, color: comp.accent, fontWeight: 700, minWidth: 22 }}>{k}</span><span style={{ fontSize: 11, fontWeight: 700, color: "#f0fdf4" }}>{v}</span></div>
+                {[["속도", stats.speed], ["체력", stats.stamina], ["피지컬", stats.physical]].map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 9, color: theme.accent, fontWeight: 700 }}>{k}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: gradeOf(v).color }}>{gradeOf(v).label}</span>
+                  </div>
                 ))}
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 9, color: `${comp.accent}88`, letterSpacing: 1, marginBottom: 2 }}>이런 선수와 비슷해요</div>
-              <div style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 19, fontWeight: 700, color: "#fff", lineHeight: 1.2, marginBottom: 2 }}>{comp.name}</div>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10 }}>{comp.club}</div>
-              <div style={{ background: `${comp.accent}12`, border: `1px solid ${comp.accent}30`, borderRadius: 8, padding: "7px 10px", marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ flex: 1, height: 5, background: "rgba(255,255,255,0.1)", borderRadius: 3, overflow: "hidden" }}><div style={{ height: "100%", width: `${similarity}%`, background: `linear-gradient(90deg,${comp.accent}88,${comp.accent})`, borderRadius: 3 }} /></div>
-                  <span style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 15, fontWeight: 700, color: comp.accent }}>{similarity}%</span>
+              <div style={{ fontSize: 9, color: `${theme.accent}88`, letterSpacing: 1, marginBottom: 6 }}>
+                {comment ? "🎯 AI 코멘트" : aiPending ? "AI 분석 중…" : "능력치 요약"}
+              </div>
+              <div style={{ background: `${theme.accent}12`, border: `1px solid ${theme.accent}30`, borderRadius: 8, padding: "10px 11px", marginBottom: 10, minHeight: 66 }}>
+                <div style={{ fontSize: 11.5, lineHeight: 1.65, color: comment ? "#e2e8f0" : "#64748b" }}>
+                  {comment || (aiPending ? "AI가 이 선수의 특징을 분석하고 있습니다…" : localSummary)}
                 </div>
-                <div style={{ fontSize: 9, color: `${comp.accent}55`, marginTop: 2 }}>유사도</div>
               </div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {[["킥", stats.kick], ["드리블", stats.dribble], ["슈팅", stats.shooting], ["수비", stats.defense]].map(([k, v]) => (
-                  <div key={k} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "4px 7px", textAlign: "center" }}>
+                  <div key={k} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "4px 8px", textAlign: "center" }}>
                     <div style={{ fontSize: 9, color: "#64748b" }}>{k}</div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: v >= 80 ? "#4ade80" : v >= 60 ? "#f59e0b" : "#ef4444" }}>{v}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: gradeOf(v).color }}>{gradeOf(v).label}</div>
                   </div>
                 ))}
               </div>
@@ -614,10 +637,10 @@ function PlayerCard({ player, slot }) {
       </div>
       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.12)", borderRadius: 14, padding: "14px 16px", marginBottom: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 10 }}>📊 능력치 상세</div>
-        <StatBar label="속도 / 기동력"   value={stats.speed}    color="#4ade80" />
-        <StatBar label="지구력 / 활동량" value={stats.stamina}  color="#4ade80" />
-        <StatBar label="피지컬 / 제공권" value={stats.physical} color="#f59e0b" />
-        <StatBar label="기술 종합"       value={stats.kick}     color="#60a5fa" />
+        <StatBar label="속도 / 기동력"   value={stats.speed} />
+        <StatBar label="지구력 / 활동량" value={stats.stamina} />
+        <StatBar label="피지컬 / 제공권" value={stats.physical} />
+        <StatBar label="기술 종합"       value={stats.kick} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <div style={{ background: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.18)", borderRadius: 12, padding: "12px" }}>
@@ -633,7 +656,7 @@ function PlayerCard({ player, slot }) {
   );
 }
 
-function PlayerAnalysis({ players, teamName, onNext, onBack }) {
+function PlayerAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
   const [current, setCurrent] = useState(0);
   const slots = FORMATION_4231;
   return (
@@ -659,7 +682,7 @@ function PlayerAnalysis({ players, teamName, onNext, onBack }) {
       </div>
       <div style={{ overflow: "hidden" }}>
         <div style={{ display: "flex", transform: `translateX(-${current * 100}%)`, transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)" }}>
-          {slots.map(slot => <div key={slot.id} style={{ minWidth: "100%" }}><PlayerCard player={players[slot.id] || {}} slot={slot} /></div>)}
+          {slots.map(slot => <div key={slot.id} style={{ minWidth: "100%" }}><PlayerCard player={players[slot.id] || {}} slot={slot} ai={ai?.players?.[slot.id]} aiPending={aiPending} /></div>)}
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
@@ -694,18 +717,37 @@ function RadarChart({ data, accentColor = "#4ade80" }) {
   );
 }
 
-function TeamAnalysis({ players, teamName, onNext, onBack }) {
+// 계산 결과(local) 위에 AI 문구만 덮어씁니다. 숫자(radar/fit/rating)는 건드리지 않습니다.
+function mergeTeamAI(local, ai) {
+  if (!local || !ai) return local;
+  const withIcon = (arr, fallback) =>
+    arr && arr.length
+      ? arr.map((x, i) => ({ icon: fallback[i]?.icon || "✅", text: x.text, desc: x.desc }))
+      : fallback;
+  return {
+    ...local,
+    strengths: withIcon(ai.team?.strengths, local.strengths),
+    weaknesses: withIcon(ai.team?.weaknesses, local.weaknesses),
+    aiSummary: ai.team?.summary || null,
+    tactics: local.tactics.map((t) => {
+      const m = (ai.tactics || []).find((x) => x.name === t.name);
+      return m ? { ...t, desc: m.reason || t.desc, pros: m.pros?.length ? m.pros : t.pros, cons: m.cons?.length ? m.cons : t.cons } : t;
+    }),
+  };
+}
+
+function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending }) {
   const [loading, setLoading] = useState(true);
   const [selectedTactic, setSelectedTactic] = useState(0);
-  const analysis = analyzeTeam(players);
+  const analysis = mergeTeamAI(analyzeTeam(players), ai);
   useEffect(() => { const t = setTimeout(() => setLoading(false), 2000); return () => clearTimeout(t); }, []);
 
-  if (loading) return (
+  if (loading || aiPending) return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}} @keyframes pulse2{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
       <div style={{ fontSize: 52, animation: "spin 1.2s linear infinite", marginBottom: 28 }}>⚽</div>
       <div style={{ fontSize: 20, fontWeight: 700, color: "#4ade80", marginBottom: 20, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 2 }}>팀 분석 중...</div>
-      {["11명 선수 데이터 수집", "팀 강점/약점 도출", "전술 적합도 계산"].map((t, i) => (
+      {["11명 선수 데이터 수집", "팀 강점/약점 도출", "AI가 전술을 검토하는 중"].map((t, i) => (
         <div key={i} style={{ fontSize: 13, color: "#4ade8066", marginBottom: 8, animation: `pulse2 1.5s ease ${i * 0.4}s infinite` }}>✓ {t}</div>
       ))}
     </div>
@@ -910,7 +952,11 @@ function TacticalGuide({ players, teamName, tactic, onNext, onBack }) {
 function ResultScreen({ result, players, onBack, showToast }) {
   const [isSaved, setIsSaved] = useState(false);
   const { teamName, formation, overallRating, tactic, radar, strengths, weaknesses } = result;
-  const playerList = FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
+  // 저장된 팀을 불러온 경우 result.players 에 이름이 들어 있습니다.
+  // 현재 players state 는 비어 있으므로 저장본을 우선 사용합니다.
+  const playerList = (result.players && result.players.length)
+    ? result.players
+    : FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
 
   const handleSave = () => {
     if (isSaved) return;
@@ -1065,6 +1111,51 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [toast, setToast] = useState(null);
   const [showTeamList, setShowTeamList] = useState(false);
+  const [ai, setAi] = useState(null);          // AI 분석 결과 (실패하면 계속 null)
+  const [aiPending, setAiPending] = useState(false);
+  const [loadedTeam, setLoadedTeam] = useState(false); // 저장본에서 불러온 결과인지
+
+  // 선수 입력이 끝났을 때 딱 한 번 호출합니다.
+  // 실패해도 절대 화면을 막지 않습니다 — 기존 계산식 결과가 그대로 보입니다.
+  const requestAI = async (playerMap) => {
+    try {
+      setAiPending(true);
+      setAi(null);
+      const roster = FORMATION_4231
+        .filter(s => playerMap[s.id]?.name)
+        .map(s => {
+          const a = analyzePlayer(playerMap[s.id], s.pos);
+          return {
+            id: s.id, name: playerMap[s.id].name, pos: s.pos, overall: a.overall,
+            grades: {
+              속도: gradeOf(a.stats.speed).label,
+              체력: gradeOf(a.stats.stamina).label,
+              피지컬: gradeOf(a.stats.physical).label,
+              기술: gradeOf(a.stats.kick).label,
+            },
+          };
+        });
+      const team = analyzeTeam(playerMap);
+      if (!roster.length || !team) return;
+
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamName,
+          players: roster,
+          computed: { radar: team.radar, tactics: team.tactics.map(t => ({ name: t.name, fit: t.fit })) },
+        }),
+      });
+      const data = await res.json();
+      if (data.source === "ai") setAi(data);
+      else console.warn("[AI 폴백]", data.reason);
+    } catch (e) {
+      console.warn("[AI 폴백]", e.message);
+    } finally {
+      setAiPending(false);
+    }
+  };
 
   const showToastMsg = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2800); };
   const savePlayer = (slotId, data) => setPlayers(prev => ({ ...prev, [slotId]: data }));
@@ -1076,6 +1167,7 @@ export default function App() {
   };
 
   const handleResult = () => {
+    setLoadedTeam(false);
     const playerList = FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
     setResult({ teamName, formation: "4-2-3-1", overallRating: analysis?.overallRating || 70, tactic: { ...selectedTactic, fit: selectedTactic?.fit || 74 }, radar: analysis?.radar || {}, strengths: analysis?.strengths || [], weaknesses: analysis?.weaknesses || [], players: playerList });
     setPhase("result");
@@ -1083,6 +1175,7 @@ export default function App() {
 
   const handleLoadTeam = (team) => {
     setResult(team);
+    setLoadedTeam(true);   // 불러온 팀은 이전 단계가 없으므로 뒤로가기 목적지를 바꿉니다
     setPhase("result");
     showToastMsg(`✓ "${team.teamName}" 불러왔어요!`);
   };
@@ -1133,11 +1226,18 @@ export default function App() {
 
       {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} />}
       {phase === "team-setup"      && <TeamSetup onNext={name => { setTeamName(name); setPhase("formation"); }} />}
-      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => setPhase("player-analysis")} onBack={() => setPhase("team-setup")} />}
-      {phase === "player-analysis" && <PlayerAnalysis players={players} teamName={teamName} onNext={() => setPhase("team-analysis")} onBack={() => setPhase("formation")} />}
-      {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} onNext={handleTacticSelected} onBack={() => setPhase("player-analysis")} />}
+      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("player-analysis"); }} onBack={() => setPhase("team-setup")} />}
+      {phase === "player-analysis" && <PlayerAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={() => setPhase("team-analysis")} onBack={() => setPhase("formation")} />}
+      {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("player-analysis")} />}
       {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} onNext={handleResult} onBack={() => setPhase("team-analysis")} />}
-      {phase === "result"          && result && <ResultScreen result={result} players={players} onBack={() => setPhase("tactical-guide")} showToast={showToastMsg} />}
+      {phase === "tactical-guide"  && !selectedTactic && (
+        <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>🧭</div>
+          <div style={{ fontSize: 15, color: "#94a3b8", marginBottom: 20 }}>이 화면으로 돌아올 분석 데이터가 없어요.</div>
+          <button onClick={() => setPhase("landing")} style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 14, fontWeight: 700, color: "#052e16", cursor: "pointer" }}>처음으로 돌아가기</button>
+        </div>
+      )}
+      {phase === "result"          && result && <ResultScreen result={result} players={players} onBack={() => setPhase(loadedTeam ? "landing" : "tactical-guide")} showToast={showToastMsg} />}
 
       {showTeamList && <TeamListModal onClose={() => setShowTeamList(false)} onLoad={handleLoadTeam} />}
       <Toast msg={toast} />
