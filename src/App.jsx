@@ -1087,7 +1087,112 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, o
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 팀 분석</button>
-        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: `linear-gradient(135deg,${tactic.color}cc,${tactic.color})`, color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>✓ 결과 보기</button>
+        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: `linear-gradient(135deg,${tactic.color}cc,${tactic.color})`, color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>🗣️ 라커룸으로 →</button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Phase 5: 라커룸 — 킥오프 직전 감독의 팀 토크
+//
+// 채팅형(실시간 질의응답)이 아니라 "연출형"입니다.
+// 전술을 고를 때 이미 받아둔 대본을 한 문장씩 순서대로 띄웁니다.
+// 질문 한 번에 API 한 번이면 무료 할당량(500회/일)이 금방 말라버리기 때문입니다.
+// ═══════════════════════════════════════════════════════════════
+const TALK_TONE = {
+  "인사": { color: "#4ade80", icon: "📣" },
+  "현실": { color: "#f59e0b", icon: "🪞" },
+  "전술": { color: "#60a5fa", icon: "📋" },
+  "지목": { color: "#a78bfa", icon: "👉" },
+  "각오": { color: "#ef4444", icon: "🔥" },
+};
+
+// AI가 실패해도 라커룸이 비어 보이지 않도록 하는 기본 대본
+function localTeamTalk(teamName, tactic, players) {
+  const names = FORMATION_4231.map(s => players[s.id]?.name).filter(Boolean);
+  const key = names[2] || names[0] || "주장";
+  return [
+    { tone: "인사", target: "", text: `다들 모여주세요. ${teamName || "우리 팀"}, 곧 시작합니다.` },
+    { tone: "전술", target: "", text: `오늘 들고 나갈 건 ${tactic.name}입니다.` },
+    { tone: "현실", target: "", text: tactic.cons?.[0] ? `${tactic.cons[0]} — 약점은 인정하고 갑니다.` : "완벽한 팀은 없습니다. 우리 것만 정확히 합니다." },
+    { tone: "지목", target: key, text: `${key} 선수, 중원에서 템포 잡아주세요. 거기서 경기가 갈립니다.` },
+    { tone: "각오", target: "", text: "각자 맡은 임무 하나씩만 확실히. 그거면 됩니다. 나갑시다." },
+  ];
+}
+
+function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, onNext, onBack }) {
+  const waiting = tacticAiPending && !tacticAi;
+  const lines = tacticAi?.lockerRoom?.length
+    ? tacticAi.lockerRoom
+    : localTeamTalk(teamName, tactic, players);
+  const total = lines.length;
+  const [shown, setShown] = useState(0);
+
+  // AI 대본이 뒤늦게 도착하면 처음부터 다시 재생합니다
+  useEffect(() => { setShown(0); }, [tacticAi]);
+
+  // 한 문장씩 순차 등장
+  useEffect(() => {
+    if (waiting || shown >= total) return;
+    const t = setTimeout(() => setShown(n => n + 1), shown === 0 ? 500 : 2100);
+    return () => clearTimeout(t);
+  }, [waiting, shown, total]);
+
+  const done = !waiting && shown >= total;
+
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 16px 60px" }}>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>킥오프 10분 전</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>🗣️ 라커룸</div>
+        <div style={{ fontSize: 12, color: "#475569", marginTop: 5 }}>
+          {teamName} · <span style={{ color: tactic.color }}>{tactic.icon} {tactic.name}</span>
+          {!tacticAi && !waiting && <span style={{ marginLeft: 8, color: "#475569" }}>· 기본 대본</span>}
+        </div>
+      </div>
+
+      <div style={{ background: "linear-gradient(180deg,#0b1220,#070c16)", border: `1px solid ${tactic.color}33`, borderRadius: 18, padding: "20px 18px", minHeight: 330, marginBottom: 14 }}>
+        {waiting ? (
+          <div style={{ textAlign: "center", padding: "80px 0" }}>
+            <div style={{ fontSize: 34, marginBottom: 14, animation: "pulse 1.4s ease infinite" }}>🤖</div>
+            <div style={{ fontSize: 13, color: "#4ade8099" }}>감독이 할 말을 고르는 중...</div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+            {lines.slice(0, shown).map((line, i) => {
+              const tone = TALK_TONE[line.tone] || TALK_TONE["전술"];
+              return (
+                <div key={i} style={{ animation: "fadeUp 0.45s ease both", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 9, background: `${tone.color}1f`, border: `1px solid ${tone.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{tone.icon}</div>
+                  <div style={{ flex: 1, paddingTop: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                      <span style={{ fontSize: 9, letterSpacing: 1, color: tone.color, fontWeight: 700 }}>{line.tone}</span>
+                      {line.target && <span style={{ fontSize: 9, color: "#475569" }}>· {line.target}</span>}
+                    </div>
+                    <div style={{ fontSize: 14, color: "#e2e8f0", lineHeight: 1.7 }}>{line.text}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {shown < total && (
+              <div style={{ display: "flex", gap: 5, paddingLeft: 38, paddingTop: 4 }}>
+                {[0, 1, 2].map(i => <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "#4ade8066", animation: `pulse 1.1s ease ${i * 0.18}s infinite` }} />)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {!waiting && shown < total && (
+        <button onClick={() => setShown(total)} style={{ width: "100%", padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#475569", fontSize: 12, cursor: "pointer", marginBottom: 14 }}>
+          건너뛰기 ({shown}/{total})
+        </button>
+      )}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 전술 가이드</button>
+        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: done ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(74,222,128,0.18)", color: done ? "#052e16" : "#4ade8099", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>✓ 결과 보기</button>
       </div>
     </div>
   );
@@ -1380,8 +1485,8 @@ export default function App() {
             </button>
           </div>
           <div style={{ maxWidth: 720, margin: "10px auto 0", display: "flex", gap: 5 }}>
-            {["팀 설정", "선수 입력", "개인 분석", "팀 분석", "전술 가이드", "결과"].map((s, i) => {
-              const idx = { "team-setup": 0, "formation": 1, "player-analysis": 2, "team-analysis": 3, "tactical-guide": 4, "result": 5 }[phase] ?? 0;
+            {["팀 설정", "선수 입력", "개인 분석", "팀 분석", "전술 가이드", "라커룸", "결과"].map((s, i) => {
+              const idx = { "team-setup": 0, "formation": 1, "player-analysis": 2, "team-analysis": 3, "tactical-guide": 4, "locker-room": 5, "result": 6 }[phase] ?? 0;
               return (
                 <div key={s} style={{ flex: 1 }}>
                   <div style={{ height: 3, borderRadius: 2, background: i <= idx ? "#4ade80" : "rgba(255,255,255,0.08)" }} />
@@ -1398,7 +1503,7 @@ export default function App() {
       {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("player-analysis"); }} onBack={() => setPhase("team-setup")} />}
       {phase === "player-analysis" && <PlayerAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={() => setPhase("team-analysis")} onBack={() => setPhase("formation")} />}
       {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} onNext={handleTacticSelected} onBack={() => setPhase("player-analysis")} />}
-      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={handleResult} onBack={() => setPhase("team-analysis")} />}
+      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={() => setPhase("locker-room")} onBack={() => setPhase("team-analysis")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🧭</div>
@@ -1406,7 +1511,15 @@ export default function App() {
           <button onClick={() => setPhase("landing")} style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 14, fontWeight: 700, color: "#052e16", cursor: "pointer" }}>처음으로 돌아가기</button>
         </div>
       )}
-      {phase === "result"          && result && <ResultScreen result={result} players={players} onBack={() => setPhase(loadedTeam ? "landing" : "tactical-guide")} showToast={showToastMsg} />}
+      {phase === "locker-room"     && selectedTactic && <LockerRoom players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} onNext={handleResult} onBack={() => setPhase("tactical-guide")} />}
+      {phase === "locker-room"     && !selectedTactic && (
+        <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>🗣️</div>
+          <div style={{ fontSize: 15, color: "#94a3b8", marginBottom: 20 }}>먼저 전술을 골라야 감독이 할 말이 생겨요.</div>
+          <button onClick={() => setPhase("landing")} style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 14, fontWeight: 700, color: "#052e16", cursor: "pointer" }}>처음으로 돌아가기</button>
+        </div>
+      )}
+      {phase === "result"          && result && <ResultScreen result={result} players={players} onBack={() => setPhase(loadedTeam ? "landing" : "locker-room")} showToast={showToastMsg} />}
 
       {showTeamList && <TeamListModal onClose={() => setShowTeamList(false)} onLoad={handleLoadTeam} />}
       <Toast msg={toast} />
