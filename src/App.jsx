@@ -469,11 +469,11 @@ const LANDING_FEATURES = [
 ];
 
 const LANDING_STEPS = [
-  { num: "01", title: "팀 정보 입력",   desc: "팀 이름과 유형을 설정해요",              icon: "🏆" },
-  { num: "02", title: "선수 정보 입력", desc: "포지션별 맞춤 질문으로 11명을 입력해요", icon: "📝" },
-  { num: "03", title: "개인 분석",      desc: "선수별 능력치와 AI 코멘트를 정리해요",    icon: "🃏" },
-  { num: "04", title: "팀 분석",        desc: "팀 강점/약점과 전술을 추천해요",          icon: "📡" },
-  { num: "05", title: "전술 가이드",    desc: "포지션별 역할을 상세히 안내해요",         icon: "🎯" },
+  { num: "01", title: "팀 구성",       desc: "팀 이름을 적고 포지션별 맞춤 질문으로 11명을 채워요", icon: "📝" },
+  { num: "02", title: "전력 브리핑",   desc: "팀 강점·약점과 선수별 AI 코멘트를 정리해요",          icon: "📡" },
+  { num: "03", title: "전술 추천",     desc: "선수 성향까지 반영해 AI가 전술을 골라줘요",           icon: "🧠" },
+  { num: "04", title: "전술 가이드",   desc: "포지션별 역할과 개인 맞춤 지시를 안내해요",           icon: "🎯" },
+  { num: "05", title: "라커룸",        desc: "킥오프 직전 감독의 팀 토크로 마무리해요",             icon: "🗣️" },
 ];
 
 function LandingPage({ onStart, onDemo }) {
@@ -606,47 +606,6 @@ function LandingPage({ onStart, onDemo }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Phase 0: 팀 설정
-// ═══════════════════════════════════════════════════════════════
-// 단계 바로 되돌아왔을 때 이미 입력한 값이 그대로 남아 있어야 합니다.
-// 그래서 초기값을 App에서 받습니다.
-function TeamSetup({ initialName, initialType, onNext }) {
-  const [teamName, setTeamName] = useState(initialName || "");
-  const [teamType, setTeamType] = useState(initialType || null);
-  return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 16px 60px" }}>
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🏆</div>
-        <div style={{ fontSize: 24, fontWeight: 700, color: "#f0fdf4", marginBottom: 8 }}>팀 정보를 입력해주세요</div>
-        <div style={{ fontSize: 14, color: "#475569" }}>전술 분석을 위한 기본 정보가 필요해요</div>
-      </div>
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: 16, padding: "24px 28px", marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 12 }}>팀 이름</div>
-        <input value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="예) FC 친구들" style={{ width: "100%", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 16 }} />
-      </div>
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: 16, padding: "24px 28px", marginBottom: 28 }}>
-        <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 16 }}>팀 유형</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[{ key: "fixed", label: "주전이 어느정도 정해진 팀", desc: "Best 11이 대략 정해져 있고 후보 몇 명이 있는 경우", icon: "✅" }, { key: "open", label: "라인업이 유동적인 팀", desc: "팀원이 많고 아직 포지션 배분이 정해지지 않은 경우", icon: "🔄", disabled: true }].map(opt => (
-            <button key={opt.key} onClick={() => !opt.disabled && setTeamType(opt.key)} style={{ padding: "16px 20px", borderRadius: 12, border: `1.5px solid ${teamType === opt.key ? "#4ade80" : "rgba(255,255,255,0.08)"}`, background: teamType === opt.key ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.02)", cursor: opt.disabled ? "not-allowed" : "pointer", textAlign: "left", opacity: opt.disabled ? 0.4 : 1, transition: "all 0.15s" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                <span style={{ fontSize: 18 }}>{opt.icon}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: teamType === opt.key ? "#4ade80" : "#cbd5e1" }}>{opt.label}</span>
-                {opt.disabled && <span style={{ fontSize: 10, background: "rgba(255,255,255,0.1)", borderRadius: 4, padding: "2px 8px", color: "#475569" }}>준비중</span>}
-              </div>
-              <div style={{ fontSize: 12, color: "#475569", paddingLeft: 28 }}>{opt.desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-      <button onClick={() => teamName && teamType && onNext(teamName, teamType)} disabled={!teamName || !teamType} style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: teamName && teamType ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: teamName && teamType ? "#052e16" : "#334155", fontSize: 16, fontWeight: 700, cursor: teamName && teamType ? "pointer" : "not-allowed", letterSpacing: 1 }}>
-        {teamName && teamType ? "포메이션 선택 →" : "팀 이름과 유형을 선택해주세요"}
-      </button>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
 // Phase 1: 포메이션 + 선수 입력 팝업
 // ═══════════════════════════════════════════════════════════════
 function PlayerInputPopup({ slot, player, onSave, onClose }) {
@@ -744,23 +703,29 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
   );
 }
 
-function FormationScreen({ teamName, players, onPlayerSave, onNext, onBack, onDemo }) {
+function FormationScreen({ teamName, onTeamNameChange, players, onPlayerSave, onNext, onBack, onDemo }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const completedCount = FORMATION_4231.filter(s => players[s.id]?.name).length;
+  const ready = !!teamName.trim() && completedCount === 11;
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 60px" }}>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 2, marginBottom: 6 }}>STEP 2</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>{teamName} 선수 입력</div>
-        <div style={{ fontSize: 13, color: "#475569", marginTop: 4 }}>포지션을 클릭해서 선수 정보를 입력하세요</div>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 2, marginBottom: 6 }}>STEP 1</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>{teamName.trim() || "팀 구성"}</div>
+        <div style={{ fontSize: 13, color: "#475569", marginTop: 4 }}>팀 이름을 적고, 포지션을 눌러 선수 정보를 채우세요</div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-        <div style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", borderRadius: 8, padding: "6px 16px", fontSize: 13, fontWeight: 700, color: "#052e16", letterSpacing: 2 }}>4-2-3-1</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: "#475569" }}>{completedCount} / 11명 완료</span>
+      {/* 팀 이름 — 예전에는 이 입력 하나 때문에 화면이 따로 있었습니다 */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 8 }}>팀 이름</div>
+        <input value={teamName} onChange={e => onTeamNameChange(e.target.value)} placeholder="예) FC 친구들" maxLength={20} style={{ width: "100%", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 16 }} />
+      </div>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", borderRadius: 8, padding: "6px 16px", fontSize: 13, fontWeight: 700, color: "#052e16", letterSpacing: 2, whiteSpace: "nowrap" }}>4-2-3-1</div>
+          <span style={{ fontSize: 13, color: "#475569", whiteSpace: "nowrap" }}>{completedCount} / 11명 완료</span>
           <button onClick={onDemo} style={{ marginLeft: "auto", padding: "6px 13px", borderRadius: 8, border: "1px solid rgba(74,222,128,0.28)", background: "rgba(74,222,128,0.07)", color: "#4ade80", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>⚡ 데모 팀으로 채우기</button>
         </div>
-        <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${(completedCount / 11) * 100}%`, background: "linear-gradient(90deg,#16a34a,#4ade80)", borderRadius: 2, transition: "width 0.4s" }} />
         </div>
       </div>
@@ -801,9 +766,9 @@ function FormationScreen({ teamName, players, onPlayerSave, onNext, onBack, onDe
         </div>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 팀 설정</button>
-        <button onClick={() => completedCount === 11 && onNext()} disabled={completedCount < 11} style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: completedCount === 11 ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: completedCount === 11 ? "#052e16" : "#334155", fontSize: 15, fontWeight: 700, cursor: completedCount === 11 ? "pointer" : "not-allowed", letterSpacing: 1 }}>
-          {completedCount === 11 ? "⚽ 개인 분석 시작" : `${11 - completedCount}명 더 입력해주세요`}
+        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 처음으로</button>
+        <button onClick={() => ready && onNext()} disabled={!ready} style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: ready ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: ready ? "#052e16" : "#334155", fontSize: 15, fontWeight: 700, cursor: ready ? "pointer" : "not-allowed", letterSpacing: 1 }}>
+          {ready ? "⚽ 전력 브리핑 보기" : completedCount < 11 ? `${11 - completedCount}명 더 입력해주세요` : "팀 이름을 적어주세요"}
         </button>
       </div>
       {selectedSlot && <PlayerInputPopup slot={selectedSlot} player={players[selectedSlot.id]} onSave={data => { onPlayerSave(selectedSlot.id, data); setSelectedSlot(null); }} onClose={() => setSelectedSlot(null)} />}
@@ -1618,8 +1583,7 @@ function TeamListModal({ onClose, onLoad }) {
 
 // 상단 단계 바. key는 phase 값과 1:1로 맞춰야 합니다.
 const STEPS = [
-  { key: "team-setup",      label: "팀 설정" },
-  { key: "formation",       label: "선수 입력" },
+  { key: "formation",       label: "팀 구성" },
   { key: "team-analysis",   label: "전력 브리핑" },
   { key: "tactical-guide",  label: "전술 가이드" },
   { key: "locker-room",     label: "라커룸" },
@@ -1632,7 +1596,6 @@ const STEPS = [
 export default function App() {
   const [phase, setPhase] = useState("landing");
   const [teamName, setTeamName] = useState("");
-  const [teamType, setTeamType] = useState(null);
   const [players, setPlayers] = useState({});
   const [selectedTactic, setSelectedTactic] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -1723,7 +1686,6 @@ export default function App() {
     const mode = demoPicker;
     setDemoPicker(null);
     setTeamName(team.name);
-    setTeamType("fixed");
     setPlayers(squad);
     setAi(null); setTacticAi(null); setAnalysis(null); setSelectedTactic(null); setResult(null);
     setAiError(null); setTacticAiError(null);
@@ -1744,8 +1706,7 @@ export default function App() {
   const hasPlayers = FORMATION_4231.some(s => players[s.id]?.name);
   const canGoTo = (key) => {
     switch (key) {
-      case "team-setup":       return true;
-      case "formation":        return !!teamName || hasPlayers;
+      case "formation":        return true;   // 이제 첫 단계라 언제든 돌아갈 수 있습니다
       case "team-analysis":    return hasPlayers;
       case "tactical-guide":
       case "locker-room":      return hasPlayers && !!selectedTactic;
@@ -1911,9 +1872,8 @@ export default function App() {
         </div>
       )}
 
-      {phase === "landing"         && <LandingPage onStart={() => setPhase("team-setup")} onDemo={() => setDemoPicker("jump")} />}
-      {phase === "team-setup"      && <TeamSetup initialName={teamName} initialType={teamType} onNext={(name, type) => { setTeamName(name); setTeamType(type); setPhase("formation"); }} />}
-      {phase === "formation"       && <FormationScreen teamName={teamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("team-analysis"); }} onBack={() => setPhase("team-setup")} onDemo={() => setDemoPicker("fill")} />}
+      {phase === "landing"         && <LandingPage onStart={() => setPhase("formation")} onDemo={() => setDemoPicker("jump")} />}
+      {phase === "formation"       && <FormationScreen teamName={teamName} onTeamNameChange={setTeamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("team-analysis"); }} onBack={() => setPhase("landing")} onDemo={() => setDemoPicker("fill")} />}
       {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} aiError={aiError} onRetryAi={() => requestAI(players)} onNext={handleTacticSelected} onBack={() => setPhase("formation")} />}
       {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase("team-analysis")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
