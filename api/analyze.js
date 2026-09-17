@@ -115,8 +115,17 @@ const TEAM_SCHEMA = {
       },
       required: ["name", "headline", "why"],
     },
+    coach: {
+      type: "OBJECT",
+      description: "이 팀에 어울리는 코치 1인. 감독이 고르기 전에 먼저 제안하는 용도입니다.",
+      properties: {
+        id: S("textbook / attack / defense 중 하나. 반드시 이 영문 id 그대로."),
+        why: S("왜 이 팀에 그 코치인지. 1~2문장. 팀 수치나 특정 선수를 근거로 들 것."),
+      },
+      required: ["id", "why"],
+    },
   },
-  required: ["players", "team", "tactics", "recommendation"],
+  required: ["players", "team", "tactics", "recommendation", "coach"],
 };
 
 // ───────────────────────────────────────────────────────────────
@@ -168,6 +177,13 @@ ${computed.tactics.map((t) => `- ${t.name}: ${t.fit}점`).join("\n")}
 - 근거가 뚜렷할수록 크게(최대 ±15), 애매하면 작게, 없으면 0으로 두세요. 세 전술을 다 움직일 필요는 없습니다.
 - 보정 결과 1위가 바뀌어도 괜찮습니다. 그게 이 작업의 목적입니다.
 - recommendation.name 은 (적합도 + fitAdjust)가 가장 높은 전술과 반드시 같아야 합니다. 계산을 직접 해보고 쓰세요.
+
+[코치 추천]
+감독이 아래 세 코치 중 한 명을 선임합니다. 이 팀에 어울리는 한 명을 먼저 제안하세요.
+- textbook (정석파) : 데이터가 가리키는 대로 갑니다. 성향 보정이 없어 계산 결과를 그대로 따릅니다.
+- attack   (공격파) : 라인을 올려 상대 진영에서 끊는 축구를 좋아합니다. 체력과 속도가 받쳐줄 때 어울립니다.
+- defense  (수비파) : 라인을 내려 뒷공간을 지우고 뺏은 뒤 찌릅니다. 피지컬과 기술로 버티는 팀에 어울립니다.
+팀이 어느 쪽으로도 뚜렷하지 않으면 textbook을 고르세요. 억지로 색을 입히지 마세요.
 
 [작성 규칙]
 - 모든 문장은 한국어 존댓말. 동호인이 바로 알아들을 수 있는 쉬운 표현.
@@ -242,10 +258,21 @@ const TACTIC_SCHEMA = {
   required: ["orders", "teamNote", "lockerRoom"],
 };
 
-function buildTacticPrompt({ teamName, tacticName, players }) {
+function buildTacticPrompt({ teamName, tacticName, players, coach }) {
+  const persona = coach
+    ? `
+[당신은 누구인가]
+당신은 "${coach.name}"(${coach.title}) 코치입니다. 신조는 "${coach.tagline}"입니다.
+말투 — ${coach.voice}
+이 말투는 **개인 지시와 라커룸 대본 전체에 일관되게** 적용하세요.
+단, 말투 때문에 사실을 바꾸지는 마세요. 등급과 성향은 아래 데이터 그대로입니다.
+`
+    : "";
+
   return `당신은 아마추어 축구 동호인 팀을 지도하는 전술 코치입니다.
 "${teamName || "우리 팀"}" 감독이 이번 경기 전술로 **${tacticName}**을 선택했습니다.
 이제 선수 한 명 한 명에게 건넬 개인 지시를 작성하세요.
+${persona}
 
 [중요] 능력치는 "상 / 중 / 하" 3단계 값입니다. 숫자로 환산해 말하지 마세요.
 다만 그 글자를 문장에 그대로 끼워 넣지는 마세요 (아래 작성 규칙 참고).
@@ -402,13 +429,13 @@ module.exports = async function handler(req, res) {
   try {
     // ── 2차 호출: 고른 전술 기준 개인 지시 (5b) ──────────────
     if (mode === "tactic") {
-      const { teamName, tacticName, players } = req.body || {};
+      const { teamName, tacticName, players, coach } = req.body || {};
       if (!tacticName || !Array.isArray(players) || !players.length) {
         return res.status(200).json({ source: "fallback", code: "bad-request", reason: "요청 데이터가 부족합니다." });
       }
 
       const raw = await askGemini(
-        buildTacticPrompt({ teamName, tacticName, players }),
+        buildTacticPrompt({ teamName, tacticName, players, coach }),
         apiKey,
         TACTIC_SCHEMA
       );
@@ -486,12 +513,20 @@ module.exports = async function handler(req, res) {
         : null;
     }
 
+    // AI가 없는 id를 지어내면 화면이 엉뚱한 코치를 추천하게 됩니다.
+    // 셋 중 하나가 아니면 그냥 제안을 비우고, 화면이 코드 계산으로 고르게 둡니다.
+    const COACH_IDS = ["textbook", "attack", "defense"];
+    const coach = COACH_IDS.includes(raw.coach?.id)
+      ? { id: raw.coach.id, why: raw.coach.why || null }
+      : null;
+
     return res.status(200).json({
       source: "ai",
       players: byId,
       team: raw.team || null,
       tactics,
       recommendation,
+      coach,
     });
   } catch (e) {
     console.error("[AI 분석 실패]", mode, e.message);
