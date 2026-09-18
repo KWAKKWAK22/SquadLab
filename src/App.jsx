@@ -66,7 +66,7 @@ const POSITION_THEME = {
 const TACTICAL_ROLES = {
   "역습 축구": {
     color: "#ef4444", icon: "⚡", eng: "COUNTER ATTACK",
-    teamSummary: [{ phase: "수비 시", icon: "🛡️", desc: "4-4-2 블록\n컴팩트 유지" }, { phase: "전환 순간", icon: "⚡", desc: "볼 탈취 즉시\n전방 빠른 배급" }, { phase: "공격 시", icon: "🥅", desc: "ST + 윙 삼각형\n빠른 마무리" }],
+    teamSummary: [{ phase: "수비 시", icon: "🛡️", desc: "{{DEF}}\n컴팩트 유지" }, { phase: "전환 순간", icon: "⚡", desc: "볼 탈취 즉시\n전방 빠른 배급" }, { phase: "공격 시", icon: "🥅", desc: "{{ATK}}\n빠른 마무리" }],
     positions: {
       ST:  { role: "최전방 타깃 & 마무리",       color: "#ef4444", tasks: ["상대 CB 압박으로 빌드업 방해", "역습 발동 시 즉시 스프린트로 깊이 확보", "크로스 및 2선 패스 침투 후 결정적 마무리"], keyAction: "공간 침투 타이밍", focus: "수비→공격 전환 시 즉시 스프린트", tip: "오프사이드 트랩 주의 — 라인 항상 체크" },
       LW:  { role: "좌측 역습 가담 & 돌파",      color: "#f59e0b", tasks: ["수비 시 좌측 미드필드 라인 유지", "볼 탈취 즉시 ST 향해 빠른 전진", "1대1 돌파 후 크로스/슈팅"], keyAction: "측면 스피드 돌파", focus: "볼 탈취 후 3초 내 전방 연결", tip: "LB와 동시 전진 금지 — 역할 분담 필수" },
@@ -81,7 +81,7 @@ const TACTICAL_ROLES = {
   },
   "점유율 축구": {
     color: "#3b82f6", icon: "🔄", eng: "POSSESSION",
-    teamSummary: [{ phase: "수비 시", icon: "🛡️", desc: "4-4-2 블록\n볼 압박 즉시" }, { phase: "빌드업", icon: "🔄", desc: "GK → CB → CM\n천천히 조율" }, { phase: "공격 시", icon: "🎯", desc: "폭 활용 + 침투\n공간 지배" }],
+    teamSummary: [{ phase: "수비 시", icon: "🛡️", desc: "{{DEF}}\n볼 압박 즉시" }, { phase: "빌드업", icon: "🔄", desc: "GK → CB → CM\n천천히 조율" }, { phase: "공격 시", icon: "🎯", desc: "폭 활용 + 침투\n공간 지배" }],
     positions: {
       ST:  { role: "연계형 타깃 & 공간 창출",     color: "#ef4444", tasks: ["전방에서 볼 받아 미드필더와 연계 플레이", "포스트 플레이로 볼 받고 돌아서며 공간 열기", "CAM·윙과 삼각형 연계로 찬스 만들기"], keyAction: "연계 & 공간 창출", focus: "등지고 받아 돌아서는 포스트 플레이 반복", tip: "역습 버리기 — 점유율 우선이라 연계가 핵심" },
       LW:  { role: "좌측 폭 유지 & 패스 루트",    color: "#f59e0b", tasks: ["터치라인 쪽에서 폭을 넓게 유지", "LB 오버래핑 시 중앙으로 이동해 패스 루트 제공", "1대1 기회 시 과감한 돌파 후 크로스"], keyAction: "폭 유지 & 연계", focus: "터치라인 근처에서 볼 받아 템포 조율", tip: "LB 오버래핑 시 동시에 움직여 공간 활용" },
@@ -1551,7 +1551,7 @@ function LineupScreen({ teamName, coach, tactic, ranked, picked, onPick, onNext,
   );
 }
 
-function TacticalGuide({ players, teamName, tactic, slots = FORMATION_4231, formationName = "4-2-3-1", backLabel = "팀 분석", tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
+function TacticalGuide({ players, teamName, tactic, slots = FORMATION_4231, formationName = "4-2-3-1", formationKey = "4231", backLabel = "팀 분석", tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
   const [selectedId, setSelectedId] = useState(slots[0]?.id ?? 1);
   // 포메이션이 바뀌면 없던 자리를 가리킬 수 있어 첫 자리로 되돌립니다
   useEffect(() => { if (!slots.some(s => s.id === selectedId)) setSelectedId(slots[0]?.id ?? 1); }, [slots, selectedId]);
@@ -1579,7 +1579,7 @@ function TacticalGuide({ players, teamName, tactic, slots = FORMATION_4231, form
             <div key={i} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
               <div style={{ fontSize: 20, marginBottom: 6 }}>{item.icon}</div>
               <div style={{ fontSize: 10, fontWeight: 700, color: tactic.color, marginBottom: 4 }}>{item.phase}</div>
-              <div style={{ fontSize: 10, color: "#64748b", lineHeight: 1.6, whiteSpace: "pre-line" }}>{item.desc}</div>
+              <div style={{ fontSize: 10, color: "#64748b", lineHeight: 1.6, whiteSpace: "pre-line" }}>{fillShape(item.desc, formationKey)}</div>
             </div>
           ))}
         </div>
@@ -1707,6 +1707,20 @@ function TacticalGuide({ players, teamName, tactic, slots = FORMATION_4231, form
 // 전술을 고를 때 이미 받아둔 대본을 한 문장씩 순서대로 띄웁니다.
 // 질문 한 번에 API 한 번이면 무료 할당량(500회/일)이 금방 말라버리기 때문입니다.
 // ═══════════════════════════════════════════════════════════════
+
+// ── 포메이션에 따라 달라지는 형태 ──────────────────────────
+//  전술 요약의 "수비 시 / 공격 시" 칸은 포메이션마다 달라야 합니다.
+//  3-5-2로 세워놓고 "4-4-2 블록"이라고 안내하면 화면이 서로 어긋납니다.
+//
+//  수비로 내려서면 앞선이 한 줄 내려와 줄 수가 늘어납니다 —
+//  윙이 내려오면 4-2-3-1은 4-4-2, 4-3-3은 4-5-1이 되고,
+//  3-5-2는 윙백이 내려와 5-3-2가 됩니다.
+const DEFENSIVE_SHAPE = { "4231": "4-4-2 블록", "433": "4-5-1 블록", "352": "5-3-2 블록" };
+const ATTACK_SHAPE    = { "4231": "ST + 2선 삼각형", "433": "전방 3명 동시에", "352": "투톱 + 윙백 폭" };
+const fillShape = (desc, key) => String(desc || "")
+  .replace("{{DEF}}", DEFENSIVE_SHAPE[key] || DEFENSIVE_SHAPE["4231"])
+  .replace("{{ATK}}", ATTACK_SHAPE[key] || ATTACK_SHAPE["4231"]);
+
 const TALK_TONE = {
   "인사": { color: "#4ade80", icon: "📣" },
   "현실": { color: "#f59e0b", icon: "🪞" },
@@ -1813,6 +1827,7 @@ function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticA
 const RESULT_SHORTCUTS = [
   { key: "formation",       label: "선수 입력",   icon: "📝" },
   { key: "team-analysis",   label: "전력 브리핑", icon: "📊" },
+  { key: "lineup",          label: "라인업",      icon: "🧩" },
   { key: "tactical-guide",  label: "전술 가이드", icon: "🧭" },
   { key: "locker-room",     label: "라커룸",      icon: "🗣️" },
 ];
@@ -2136,6 +2151,13 @@ export default function App() {
   const goToStep = (key) => {
     if (!canGoTo(key) || key === phase) return;
     if (key === "result" && !result) { handleResult(); return; }  // 결과가 아직 없으면 지금 만들어서 이동
+    // 배치를 아직 계산한 적이 없으면 여기서 계산합니다.
+    // 배치 정보가 없는 저장본을 불러왔거나, 단계 바로 건너뛰어 들어온 경우입니다.
+    if (key === "lineup" && !lineupRanked) {
+      const ranked = rankFormations(toLineupPlayers(players), coach?.id);
+      setLineupRanked(ranked);
+      setLineup(ranked ? ranked.coachPick : null);
+    }
     setPhase(key);
   };
   const savePlayer = (slotId, data) => setPlayers(prev => ({ ...prev, [slotId]: data }));
@@ -2186,7 +2208,9 @@ export default function App() {
         savedAt: new Date().toLocaleString("ko-KR"),
         ...result,
         players: playerList,
-        snapshot: { version: 3, players, ai, tacticAi, tactic: selectedTactic, coach: coach?.id || null },
+        // 배치는 통째로 담지 않고 포메이션 키만 저장합니다.
+        // 계산이 결정론적이라 불러올 때 다시 계산해도 같은 배치가 나옵니다.
+        snapshot: { version: 4, players, ai, tacticAi, tactic: selectedTactic, coach: coach?.id || null, formationKey: lineup?.formation?.key || null },
       };
       localStorage.setItem("squadlab_teams", JSON.stringify([team, ...saved].slice(0, 10)));
       showToastMsg("💾 팀이 저장되었어요!");
@@ -2211,6 +2235,17 @@ export default function App() {
       setSelectedTactic(snap.tactic || team.tactic || null);
       const local = analyzeTeam(snap.players || {});
       setAnalysis(local ? mergeTeamAI(local, snap.ai) : null);
+      // 저장해 둔 포메이션으로 배치를 다시 계산합니다 (AI 호출 없음).
+      // v3 이하 저장본은 formationKey 가 없으므로 지금까지처럼 4-2-3-1 로 둡니다.
+      if (snap.formationKey) {
+        const ranked = rankFormations(toLineupPlayers(snap.players || {}), snap.coach);
+        const found = ranked?.byCoach.find(r => r.formation.key === snap.formationKey);
+        setLineupRanked(ranked);
+        setLineup(found || ranked?.coachPick || null);
+      } else {
+        setLineupRanked(null);
+        setLineup(null);
+      }
     } else {
       // v1 저장본: 이름·포지션밖에 없어 이전 단계를 복원할 수 없습니다
       setPlayers({});
@@ -2218,6 +2253,8 @@ export default function App() {
       setTacticAi(null);
       setSelectedTactic(null);
       setAnalysis(null);
+      setLineupRanked(null);
+      setLineup(null);
     }
     setPhase("result");
     showToastMsg(`✓ "${team.teamName}" 불러왔어요!`);
@@ -2341,7 +2378,7 @@ export default function App() {
           <button onClick={() => setPhase("formation")} style={{ marginTop: 18, padding: "11px 20px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#cbd5e1", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>선수 입력으로</button>
         </div>
       )}
-      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={activePlayers} slots={activeSlots} formationName={lineup?.formation?.name || "4-2-3-1"} backLabel={lineup ? "라인업" : "코치 선임"} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase(lineup ? "lineup" : "coach")} />}
+      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={activePlayers} slots={activeSlots} formationName={lineup?.formation?.name || "4-2-3-1"} formationKey={lineup?.formation?.key || "4231"} backLabel={lineup ? "라인업" : "코치 선임"} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase(lineup ? "lineup" : "coach")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🧭</div>
