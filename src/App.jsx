@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { rankFormations, FORMATIONS } from "./lineup";
 
 // ═══════════════════════════════════════════════════════════════
 // 상수 & 설정
@@ -207,6 +208,9 @@ const coachById = id => COACHES.find(c => c.id === id) || COACHES[0];
 function josa(word, withBatchim, without) {
   const last = String(word || "").trim().slice(-1);
   if (!last) return without;
+  // 숫자로 끝나는 말(포메이션 이름 "4-2-3-1" 등)은 읽는 소리로 판정합니다.
+  // 4-2-3-1은 "…일"이라 받침이 있고, 3-5-2는 "…이"라 받침이 없습니다.
+  if (last >= "0" && last <= "9") return "013678".includes(last) ? withBatchim : without;
   const code = last.charCodeAt(0);
   if (code < 0xac00 || code > 0xd7a3) return without;   // 한글이 아니면 받침 없음으로 봅니다
   return (code - 0xac00) % 28 ? withBatchim : without;
@@ -333,8 +337,10 @@ function traitsOf(player, pos) {
   return out;
 }
 
-function buildRoster(playerMap) {
-  return FORMATION_4231
+// slots 를 받는 이유: 라인업을 고르고 나면 선수가 원래 입력한 자리가 아니라
+// 실제로 세운 자리에서 뜁니다. AI에게도 그 자리로 넘겨야 지시가 맞습니다.
+function buildRoster(playerMap, slots = FORMATION_4231) {
+  return slots
     .filter(slot => playerMap[slot.id]?.name)
     .map(slot => {
       const player = playerMap[slot.id];
@@ -351,6 +357,35 @@ function buildRoster(playerMap) {
           기술: gradeOf(a.stats.kick).label,
         },
         traits: traitsOf(player, slot.pos),
+      };
+    });
+}
+
+// ───────────────────────────────────────────────────────────────
+//  라인업 계산에 넘길 형태로 변환
+//
+//  lineup.js 는 화면도 입력 형식도 모릅니다. 숫자로 환산된 값만 받습니다.
+//  prefPos 는 "그 선수가 입력된 자리" 입니다 — 원래 뛰던 포지션으로 봅니다.
+//  raw 에 원본을 달아두어, 배치가 끝난 뒤 이름·성향을 다시 꺼내 씁니다.
+// ───────────────────────────────────────────────────────────────
+function toLineupPlayers(playerMap) {
+  return FORMATION_4231
+    .filter(slot => playerMap[slot.id]?.name)
+    .map(slot => {
+      const p = playerMap[slot.id];
+      const techVals = Object.values(p.tech || {}).map(v => TECH_SCORE[v] || 65);
+      const techScore = techVals.length
+        ? Math.round(techVals.reduce((a, b) => a + b, 0) / techVals.length)
+        : 65;
+      return {
+        id: slot.id,
+        name: p.name,
+        prefPos: slot.pos,
+        speed:    STAT_S[p.physical?.speed] || 65,
+        stamina:  STAT_S[p.physical?.stamina] || 65,
+        physical: physicalScore(p),
+        techScore,
+        raw: p,
       };
     });
 }
@@ -1378,10 +1413,150 @@ function CoachSelect({ analysis, teamName, coach, onPickCoach, suggested, sugges
 // ═══════════════════════════════════════════════════════════════
 // Phase 4: 전술 역할 가이드
 // ═══════════════════════════════════════════════════════════════
-function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
-  const [selectedId, setSelectedId] = useState(1);
+// ═══════════════════════════════════════════════════════════════
+//  라인업 — 누구를 어디에 세울 것인가
+//
+//  이 화면의 배치는 AI가 아니라 코드가 계산합니다. (src/lineup.js)
+//  AI에게 베스트 11을 맡기면 물을 때마다 답이 달라지고 최적인지 확인할 수 없는데,
+//  조합 최적화는 원래 계산으로 푸는 문제이기 때문입니다.
+//
+//  코치 선임 화면과 같은 원칙입니다 — 데이터가 고른 형태와 코치가 고른 형태를
+//  나란히 두고, 코치 보정은 "성향"이라고 따로 이름 붙여 표시합니다.
+// ═══════════════════════════════════════════════════════════════
+function LineupScreen({ teamName, coach, tactic, ranked, picked, onPick, onNext, onBack }) {
+  const [showBench, setShowBench] = useState(false);
+  const dataPick = ranked.dataPick;
+  const coachPick = ranked.coachPick;
+  const changed = dataPick.formation.key !== coachPick.formation.key;
+  const cur = picked;
+  const accent = coach?.color || "#4ade80";
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 16px 60px" }}>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>라인업</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>{teamName}{josa(teamName, "을", "를")} 어떻게 세울까요</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginTop: 7, lineHeight: 1.65, wordBreak: "keep-all" }}>
+          11명을 11자리에 놓는 경우의 수는 약 4천만 가지입니다. 그중 <b style={{ color: "#94a3b8" }}>합이 가장 높은 배치</b>를
+          포메이션마다 계산했습니다. AI가 고른 게 아니라 계산한 결과라, 같은 명단이면 언제나 같은 배치가 나옵니다.
+        </div>
+      </div>
+
+      <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${accent}33`, borderRadius: 14, padding: "14px 16px", marginBottom: 16 }}>
+        <div style={{ fontSize: 10, letterSpacing: 1.5, color: "#64748b", fontWeight: 700, marginBottom: 11 }}>같은 선수, 다른 배치</div>
+        <div className="lineup-vs" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 9.5, color: "#64748b", marginBottom: 4 }}>📊 데이터 추천</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#e2e8f0", fontFamily: "'Rajdhani',sans-serif" }}>{dataPick.formation.name}</div>
+            <div style={{ fontSize: 10.5, color: "#475569", marginTop: 2 }}>합계 {dataPick.total}</div>
+          </div>
+          <div style={{ fontSize: 10, color: "#475569", fontWeight: 700 }}>VS</div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 9.5, color: accent, marginBottom: 4 }}>{coach?.icon} {coach?.name} 추천</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: accent, fontFamily: "'Rajdhani',sans-serif" }}>{coachPick.formation.name}</div>
+            <div style={{ fontSize: 10.5, color: "#475569", marginTop: 2 }}>
+              합계 {coachPick.coachTotal}
+              {coachPick.bias !== 0 && <span style={{ color: accent }}> ({coachPick.bias > 0 ? "+" : ""}{coachPick.bias} 성향)</span>}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginTop: 11, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", wordBreak: "keep-all" }}>
+          {changed
+            ? <>계산은 {dataPick.formation.name}{josa(dataPick.formation.name, "을", "를")} 1순위로 놓지만, {coach?.name}{josa(coach?.name, "은", "는")} {coachPick.formation.name}{josa(coachPick.formation.name, "을", "를")} 고릅니다. {coachPick.coachWhy}</>
+            : <>{coach?.name}도 {dataPick.formation.name}에 동의합니다. {coachPick.coachWhy}</>}
+        </div>
+      </div>
+
+      <div style={{ fontSize: 10, letterSpacing: 1.5, color: "#64748b", fontWeight: 700, marginBottom: 9 }}>형태 고르기</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 18 }}>
+        {ranked.byCoach.map((r, i) => {
+          const on = r.formation.key === cur.formation.key;
+          return (
+            <button key={r.formation.key} onClick={() => onPick(r)}
+              style={{ textAlign: "left", background: on ? `${accent}12` : "rgba(255,255,255,0.03)", border: `1px solid ${on ? accent + "66" : "rgba(255,255,255,0.08)"}`, borderRadius: 12, padding: "13px 15px", cursor: "pointer", width: "100%" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                {i === 0 && <span style={{ fontSize: 8.5, letterSpacing: 1, color: accent, border: `1px solid ${accent}55`, borderRadius: 4, padding: "1px 5px", fontWeight: 700 }}>{coach?.name} 1순위</span>}
+                <span style={{ fontSize: 17, fontWeight: 700, color: on ? accent : "#e2e8f0", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>{r.formation.name}</span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>{r.formation.label}</span>
+                <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: on ? accent : "#94a3b8", fontFamily: "'Rajdhani',sans-serif" }}>
+                  {r.total}{r.bias !== 0 && <span style={{ fontSize: 10, color: accent }}> {r.bias > 0 ? "+" : ""}{r.bias}</span>}
+                  {r.bias !== 0 && <span style={{ fontSize: 12 }}> = {r.coachTotal}</span>}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.55, wordBreak: "keep-all" }}>{r.formation.desc}</div>
+              <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 5 }}>
+                {r.movedCount === 0 ? "전원이 원래 자리에서 뜁니다" : `${r.movedCount}명이 평소와 다른 자리에서 뜁니다`}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: 10, letterSpacing: 1.5, color: "#64748b", fontWeight: 700, marginBottom: 9 }}>
+        {cur.formation.name} 배치 · 평균 {cur.avg}점
+      </div>
+      <div className="lineup-pitch" style={{ position: "relative", background: "linear-gradient(180deg,#0a1f14,#071510)", border: "1px solid rgba(74,222,128,0.16)", borderRadius: 14, height: 380, marginBottom: 12, overflow: "hidden" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "rgba(255,255,255,0.07)" }} />
+        <div style={{ position: "absolute", left: "50%", top: "50%", width: 74, height: 74, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.07)", transform: "translate(-50%,-50%)" }} />
+        {cur.placements.map(pl => (
+          <div key={pl.slotId} style={{ position: "absolute", left: `${pl.x}%`, top: `${pl.y}%`, transform: "translate(-50%,-50%)", textAlign: "center", width: 62 }}>
+            <div style={{ width: 34, height: 34, margin: "0 auto 3px", borderRadius: 10, background: pl.onPref ? "rgba(74,222,128,0.16)" : "rgba(251,191,36,0.18)", border: `1px solid ${pl.onPref ? "rgba(74,222,128,0.45)" : "rgba(251,191,36,0.55)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, color: pl.onPref ? "#4ade80" : "#fbbf24", fontFamily: "'Rajdhani',sans-serif" }}>
+              {pl.pos}
+            </div>
+            <div style={{ fontSize: 9.5, color: "#cbd5e1", fontWeight: 600, lineHeight: 1.25, wordBreak: "keep-all" }}>{pl.player.name}</div>
+            {!pl.onPref && <div style={{ fontSize: 8, color: "#fbbf24", marginTop: 1 }}>← {pl.player.prefPos}</div>}
+          </div>
+        ))}
+      </div>
+
+      {cur.movedCount > 0 && (
+        <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 11, padding: "10px 13px", marginBottom: 12 }}>
+          <div style={{ fontSize: 10.5, color: "#fbbf24", fontWeight: 700, marginBottom: 6 }}>⚠️ 평소와 다른 자리</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {cur.placements.filter(p => !p.onPref).map(p => (
+              <div key={p.slotId} style={{ fontSize: 11, color: "#cbd5e1", lineHeight: 1.5, wordBreak: "keep-all" }}>
+                <b>{p.player.name}</b> · {p.player.prefPos} → <b style={{ color: "#fbbf24" }}>{p.pos}</b>
+                <span style={{ color: "#64748b" }}> · 적합 {p.score}점</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: "#64748b", marginTop: 7, lineHeight: 1.55, wordBreak: "keep-all" }}>
+            원래 자리가 아닌 선수는 그 포지션 전용 능력을 물어본 적이 없어, 기본기로 <b>추정</b>한 점수입니다.
+          </div>
+        </div>
+      )}
+
+      {cur.benched.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button onClick={() => setShowBench(v => !v)} style={{ width: "100%", padding: "9px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11.5, cursor: "pointer" }}>
+            벤치 {cur.benched.length}명 {showBench ? "접기" : "보기"}
+          </button>
+          {showBench && (
+            <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {cur.benched.map(b => (
+                <span key={b.id} style={{ fontSize: 11, color: "#94a3b8", background: "rgba(255,255,255,0.04)", borderRadius: 7, padding: "4px 9px" }}>{b.name} · {b.prefPos}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 코치 선임</button>
+        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: `linear-gradient(135deg,${tactic?.color || accent}cc,${tactic?.color || accent})`, color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
+          이 배치로 전술 가이드 →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TacticalGuide({ players, teamName, tactic, slots = FORMATION_4231, formationName = "4-2-3-1", backLabel = "팀 분석", tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
+  const [selectedId, setSelectedId] = useState(slots[0]?.id ?? 1);
+  // 포메이션이 바뀌면 없던 자리를 가리킬 수 있어 첫 자리로 되돌립니다
+  useEffect(() => { if (!slots.some(s => s.id === selectedId)) setSelectedId(slots[0]?.id ?? 1); }, [slots, selectedId]);
   const tacticData = { ...TACTICAL_ROLES[tactic.name], name: tactic.name };
-  const currentSlot = FORMATION_4231.find(s => s.id === selectedId);
+  const currentSlot = slots.find(s => s.id === selectedId) || slots[0];
   const currentGuide = tacticData.positions?.[currentSlot?.pos];
   // 아래 기본 가이드는 AI가 실패해도 항상 그대로 보입니다.
   // AI 지시는 그 위에 얹히는 추가 레이어일 뿐입니다. (피드백 5b)
@@ -1420,7 +1595,7 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, t
       </div>
       <div className="sq-guide-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.7fr", gap: 14, marginBottom: 20 }}>
         <div>
-          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, textAlign: "center" }}>4-2-3-1 · 선수 클릭</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, textAlign: "center" }}>{formationName} · 선수 클릭</div>
           <div className="sq-pitch" style={{ position: "relative", width: "100%", paddingBottom: "140%", background: "linear-gradient(180deg,#1a4a2a,#1e5c30,#1a4a2a)", borderRadius: 12, overflow: "hidden", border: `1px solid ${tactic.color}33`, marginBottom: 10 }}>
             {[...Array(7)].map((_, i) => <div key={i} style={{ position: "absolute", top: `${i * 14.3}%`, left: 0, right: 0, height: "7%", background: i % 2 === 0 ? "rgba(0,0,0,0.08)" : "transparent" }} />)}
             <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} viewBox="0 0 100 140" preserveAspectRatio="none">
@@ -1430,7 +1605,7 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, t
               <rect x="24" y="3" width="52" height="18" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
               <rect x="24" y="119" width="52" height="18" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
             </svg>
-            {FORMATION_4231.map(slot => {
+            {slots.map(slot => {
               const p = players[slot.id]; const isSel = selectedId === slot.id;
               return (
                 <button key={slot.id} onClick={() => setSelectedId(slot.id)} style={{ position: "absolute", left: `${slot.x}%`, top: `${slot.y}%`, transform: "translate(-50%,-50%)", width: isSel ? 48 : 36, height: isSel ? 48 : 36, borderRadius: "50%", border: isSel ? `2.5px solid ${tactic.color}` : "1.5px solid rgba(255,255,255,0.3)", background: isSel ? `${tactic.color}33` : "rgba(0,0,0,0.55)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transition: "all 0.2s", boxShadow: isSel ? `0 0 14px ${tactic.color}55` : "none", padding: 2, zIndex: isSel ? 2 : 1 }}>
@@ -1441,7 +1616,7 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, t
             })}
           </div>
           <div className="sq-pitch-list" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {FORMATION_4231.map(slot => (
+            {slots.map(slot => (
               <button key={slot.id} onClick={() => setSelectedId(slot.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 7, border: `1px solid ${selectedId === slot.id ? `${tactic.color}44` : "rgba(255,255,255,0.04)"}`, background: selectedId === slot.id ? `${tactic.color}10` : "transparent", cursor: "pointer" }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: tactic.color, minWidth: 24 }}>{slot.pos}</span>
                 <span style={{ fontSize: 10, color: selectedId === slot.id ? "#f0fdf4" : "#64748b" }}>{players[slot.id]?.name}</span>
@@ -1518,7 +1693,7 @@ function TacticalGuide({ players, teamName, tactic, tacticAi, tacticAiPending, t
         )}
       </div>
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 팀 분석</button>
+        <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← {backLabel}</button>
         <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: `linear-gradient(135deg,${tactic.color}cc,${tactic.color})`, color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>🗣️ 라커룸으로 →</button>
       </div>
     </div>
@@ -1541,8 +1716,8 @@ const TALK_TONE = {
 };
 
 // AI가 실패해도 라커룸이 비어 보이지 않도록 하는 기본 대본
-function localTeamTalk(teamName, tactic, players) {
-  const names = FORMATION_4231.map(s => players[s.id]?.name).filter(Boolean);
+function localTeamTalk(teamName, tactic, players, slots = FORMATION_4231) {
+  const names = slots.map(s => players[s.id]?.name).filter(Boolean);
   const key = names[2] || names[0] || "주장";
   return [
     { tone: "인사", target: "", text: `다들 모여주세요. ${teamName || "우리 팀"}, 곧 시작합니다.` },
@@ -1553,11 +1728,11 @@ function localTeamTalk(teamName, tactic, players) {
   ];
 }
 
-function LockerRoom({ teamName, tactic, players, tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
+function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
   const waiting = tacticAiPending && !tacticAi;
   const lines = tacticAi?.lockerRoom?.length
     ? tacticAi.lockerRoom
-    : localTeamTalk(teamName, tactic, players);
+    : localTeamTalk(teamName, tactic, players, slots);
   const total = lines.length;
   const [shown, setShown] = useState(0);
 
@@ -1815,6 +1990,7 @@ const STEPS = [
   { key: "formation",       label: "팀 구성" },
   { key: "team-analysis",   label: "전력 브리핑" },
   { key: "coach",           label: "코치 선임" },
+  { key: "lineup",          label: "라인업" },
   { key: "tactical-guide",  label: "전술 가이드" },
   { key: "locker-room",     label: "라커룸" },
   { key: "result",          label: "결과" },
@@ -1829,6 +2005,8 @@ export default function App() {
   const [players, setPlayers] = useState({});
   const [selectedTactic, setSelectedTactic] = useState(null);
   const [coach, setCoach] = useState(null);          // 선임한 코치 (Phase 3)
+  const [lineup, setLineup] = useState(null);        // 고른 배치 (Phase 4) — src/lineup.js 가 계산
+  const [lineupRanked, setLineupRanked] = useState(null); // 포메이션 3안
   const [analysis, setAnalysis] = useState(null);
   const [result, setResult] = useState(null);
   const [toast, setToast] = useState(null);
@@ -1880,14 +2058,14 @@ export default function App() {
   // 감독이 전술을 고른 직후 딱 한 번 더 호출합니다. (피드백 5b)
   // 1차 호출 때 한꺼번에 받지 않는 이유: 전술 3개 × 11명 = 33벌을 미리 쓰게 되는데
   // 그중 32벌은 버려집니다. 고른 뒤에 물어야 그 전술에 맞는 지시가 나옵니다.
-  const requestTacticAI = async (tactic, playerMap) => {
+  const requestTacticAI = async (tactic, playerMap, slots = FORMATION_4231, formationKey = "4231") => {
     try {
       setTacticAiPending(true);
       setTacticAi(null);
       setTacticAiError(null);
       if (navigator.onLine === false) { setTacticAiError({ code: "offline" }); return; }
       const guide = TACTICAL_ROLES[tactic.name]?.positions || {};
-      const roster = buildRoster(playerMap).map(p => ({
+      const roster = buildRoster(playerMap, slots).map(p => ({
         ...p,
         // 화면에 이미 떠 있는 하드코딩 가이드를 같이 넘겨서 "같은 말 반복"을 막습니다
         baseRole: guide[p.pos]?.role || "",
@@ -1902,7 +2080,7 @@ export default function App() {
         body: JSON.stringify({ mode: "tactic", teamName, tacticName: tactic.name, players: roster, coach: coach ? { name: coach.name, title: coach.title, tagline: coach.tagline, voice: coach.voice } : null }),
       });
       const data = await res.json();
-      if (data.source === "ai") setTacticAi({ ...data, coachId: coach?.id || null });
+      if (data.source === "ai") setTacticAi({ ...data, coachId: coach?.id || null, formationKey });
       else { setTacticAiError({ code: data.code || "error", reason: data.reason }); console.warn("[전술 AI 폴백]", data.reason); }
     } catch (e) {
       setTacticAiError({ code: navigator.onLine === false ? "offline" : "error", reason: e.message });
@@ -1936,11 +2114,19 @@ export default function App() {
   // 상단 단계 바를 클릭해서 앞뒤로 오갈 수 있게 합니다.
   // 단, 그 화면을 그릴 데이터가 없으면 눌리지 않습니다 (빈 화면 방지).
   const hasPlayers = FORMATION_4231.some(s => players[s.id]?.name);
+
+  // 라인업을 고르고 나면 이후 화면은 "입력한 자리"가 아니라 "실제로 세운 자리"를 씁니다.
+  // 라인업이 없으면(저장해 둔 예전 팀 등) 지금까지처럼 4-2-3-1 로 동작합니다.
+  const activeSlots = lineup?.formation?.slots || FORMATION_4231;
+  const activePlayers = lineup
+    ? Object.fromEntries(lineup.placements.map(pl => [pl.slotId, pl.player.raw]))
+    : players;
   const canGoTo = (key) => {
     switch (key) {
       case "formation":        return true;   // 이제 첫 단계라 언제든 돌아갈 수 있습니다
       case "team-analysis":    return hasPlayers;
       case "coach":            return hasPlayers;
+      case "lineup":           return hasPlayers && !!selectedTactic && !!coach;
       case "tactical-guide":
       case "locker-room":      return hasPlayers && !!selectedTactic && !!coach;
       case "result":           return !!result || (hasPlayers && !!selectedTactic && !!analysis);
@@ -1959,15 +2145,32 @@ export default function App() {
     setAnalysis(analysisData);
     // 전술이 바뀌면 이전 결과 화면은 더 이상 맞지 않으므로 버립니다
     setResult(null);
-    // 이미 같은 전술로 받아둔 지시가 있으면 다시 부르지 않습니다 (무료 할당량 절약)
-    // 같은 전술이라도 코치가 바뀌었으면 말투가 달라지므로 다시 부릅니다
-    if (tacticAi?.tacticName !== tactic.name || tacticAi?.coachId !== coach?.id) requestTacticAI(tactic, players);
+    // 배치를 여기서 계산합니다. AI 호출은 없습니다 — 전부 코드 계산입니다.
+    const ranked = rankFormations(toLineupPlayers(players), coach?.id);
+    setLineupRanked(ranked);
+    setLineup(ranked ? ranked.coachPick : null);
+    // 전술 AI 는 배치가 확정된 뒤에 부릅니다. 자리가 바뀌면 지시도 달라지기 때문입니다.
+    setPhase("lineup");
+  };
+
+  // 배치 확정 → 그 자리 기준으로 개인 지시를 받아옵니다
+  const handleLineupConfirmed = () => {
+    const slots = lineup?.formation?.slots || FORMATION_4231;
+    const pmap = lineup
+      ? Object.fromEntries(lineup.placements.map(pl => [pl.slotId, pl.player.raw]))
+      : players;
+    // 전술·코치·포메이션 중 하나라도 달라졌으면 다시 부릅니다 (같으면 할당량 절약)
+    if (tacticAi?.tacticName !== selectedTactic?.name
+        || tacticAi?.coachId !== coach?.id
+        || tacticAi?.formationKey !== (lineup?.formation?.key || "4231")) {
+      requestTacticAI(selectedTactic, pmap, slots, lineup?.formation?.key || "4231");
+    }
     setPhase("tactical-guide");
   };
 
   const handleResult = () => {
-    const playerList = FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
-    setResult({ teamName, formation: "4-2-3-1", overallRating: analysis?.overallRating || 70, tactic: { ...selectedTactic, fit: selectedTactic?.fit || 74 }, radar: analysis?.radar || {}, strengths: analysis?.strengths || [], weaknesses: analysis?.weaknesses || [], players: playerList });
+    const playerList = activeSlots.map(s => ({ name: activePlayers[s.id]?.name || "?", pos: s.pos }));
+    setResult({ teamName, formation: lineup?.formation?.name || "4-2-3-1", overallRating: analysis?.overallRating || 70, tactic: { ...selectedTactic, fit: selectedTactic?.fit || 74 }, radar: analysis?.radar || {}, strengths: analysis?.strengths || [], weaknesses: analysis?.weaknesses || [], players: playerList });
     setPhase("result");
   };
 
@@ -2123,7 +2326,22 @@ export default function App() {
         const why = ai?.coach?.why || `${sug.name}는 "${sug.tagline}" 지금 팀 수치를 보면 그 방향이 가장 무리가 없습니다.`;
         return <CoachSelect analysis={a} teamName={teamName} coach={coach} onPickCoach={setCoach} suggested={sug} suggestWhy={why} onNext={handleTacticSelected} onBack={() => setPhase("team-analysis")} />;
       })()}
-      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase("coach")} />}
+      {phase === "lineup"          && lineupRanked && lineup && (
+        <LineupScreen
+          teamName={teamName} coach={coach} tactic={selectedTactic}
+          ranked={lineupRanked} picked={lineup} onPick={setLineup}
+          onNext={handleLineupConfirmed} onBack={() => setPhase("coach")} />
+      )}
+      {phase === "lineup"          && !lineupRanked && (
+        <div style={{ maxWidth: 560, margin: "60px auto", padding: "0 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 30, marginBottom: 12 }}>🧩</div>
+          <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.7, wordBreak: "keep-all" }}>
+            배치를 계산하려면 골키퍼를 포함해 11명이 필요합니다.
+          </div>
+          <button onClick={() => setPhase("formation")} style={{ marginTop: 18, padding: "11px 20px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#cbd5e1", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>선수 입력으로</button>
+        </div>
+      )}
+      {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={activePlayers} slots={activeSlots} formationName={lineup?.formation?.name || "4-2-3-1"} backLabel={lineup ? "라인업" : "코치 선임"} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase(lineup ? "lineup" : "coach")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🧭</div>
@@ -2131,7 +2349,7 @@ export default function App() {
           <button onClick={() => setPhase("landing")} style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 14, fontWeight: 700, color: "#052e16", cursor: "pointer" }}>처음으로 돌아가기</button>
         </div>
       )}
-      {phase === "locker-room"     && selectedTactic && <LockerRoom players={players} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={handleResult} onBack={() => setPhase("tactical-guide")} />}
+      {phase === "locker-room"     && selectedTactic && <LockerRoom players={activePlayers} slots={activeSlots} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={handleResult} onBack={() => setPhase("tactical-guide")} />}
       {phase === "locker-room"     && !selectedTactic && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "80px 16px", textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 14 }}>🗣️</div>
