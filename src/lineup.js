@@ -31,28 +31,33 @@ export const POS_WEIGHTS = {
   GK:  { speed:  5, stamina:  5, physical: 25, tech: 65 }, // 손과 반응
 };
 
-// ── 포지션 계열 ────────────────────────────────────────────────
-//  전혀 다른 자리로 옮기는 것과, 비슷한 자리로 옮기는 것을 구분합니다.
-//  측면 수비수가 측면 공격을 보는 건 흔하지만,
-//  중앙 수비수가 윙어를 보는 건 드뭅니다.
-const FAMILY = {
-  ST: "front", LW: "wide", RW: "wide", CAM: "center", CM: "center",
-  LB: "wide", RB: "wide", CB: "back", GK: "keeper",
+// ── 포지션 사이의 거리 ─────────────────────────────────────────
+//
+//  0 자기 자리 · 1 자연스러운 겸업 · 2 가능하지만 무리 · 3 거의 안 하는 이동
+//
+//  계열로 묶지 않고 쌍마다 손으로 적었습니다. 계열로 묶었더니
+//  "중원 ↔ 수비는 통한다"는 규칙에 공격형 미드까지 얹혀서,
+//  공미를 센터백에 세우는 점수가 윙에 세우는 것과 같아졌기 때문입니다.
+//
+//  "공격형 미드가 센터백을 볼 수 있는가"는 측정되는 값이 아니라 축구적
+//  판단입니다. 계산으로 위장하면 근거를 댈 수 없어 표로 적습니다.
+//  (표에 없는 조합은 3으로 봅니다)
+const MOVE_DIST = {
+  ST:  { CAM: 1, LW: 1, RW: 1, CM: 2, LB: 3, RB: 3, CB: 3 },   // 내려와 연계하거나 측면으로 빠지는 건 흔합니다
+  LW:  { RW: 1, ST: 1, LB: 1, CAM: 2, CM: 2, RB: 2, CB: 3 },   // 윙 ↔ 윙백은 3백을 쓸 때 늘 일어납니다
+  RW:  { LW: 1, ST: 1, RB: 1, CAM: 2, CM: 2, LB: 2, CB: 3 },
+  CAM: { CM: 1, ST: 1, LW: 2, RW: 2, LB: 3, RB: 3, CB: 3 },    // 공미는 뒤로 못 갑니다
+  CM:  { CAM: 1, CB: 2, LB: 2, RB: 2, ST: 2, LW: 2, RW: 2 },   // 중앙 미드는 그나마 두루 됩니다
+  LB:  { RB: 1, LW: 1, CB: 2, CM: 2, RW: 2, CAM: 3, ST: 3 },
+  RB:  { LB: 1, RW: 1, CB: 2, CM: 2, LW: 2, CAM: 3, ST: 3 },
+  CB:  { LB: 2, RB: 2, CM: 2, LW: 3, RW: 3, CAM: 3, ST: 3 },
 };
 
-// 계열이 달라도 서로 통하는 조합 (양방향)
-const NEIGHBOR = [
-  ["front", "center"],  // ST ↔ CAM/CM — 내려와 연계하는 유형
-  ["wide", "front"],    // 윙 ↔ ST
-  ["center", "back"],   // CM ↔ CB — 수비형 미드가 내려서는 경우
-  ["wide", "center"],   // 윙백 ↔ 중앙 미드
-];
-
 // ── 보정값 ─────────────────────────────────────────────────────
-const PREF_BONUS   = 12; // 본인이 뛰던 자리
-const FAMILY_BONUS =  5; // 같은 계열
-const NEIGHBOR_BNS =  2; // 통하는 계열
-const OFF_PENALTY  = -8; // 전혀 다른 계열
+//  거리 3은 막지 않고 크게 깎습니다. 동호회에서는 사람이 모자라면
+//  누구라도 세워야 하므로, 다른 수가 없을 때만 고르게 둡니다.
+const PREF_BONUS = 12;                        // 본인이 뛰던 자리
+const MOVE_PENALTY = [0, -3, -14, -30];       // 거리 0·1·2·3
 
 // 전문 능력을 모르는 포지션에서는 tech 값을 평균 쪽으로 끌어당깁니다.
 // ST로 입력한 선수의 "결정력 87"이 CB의 "빌드업 87"을 뜻하지는 않기 때문입니다.
@@ -68,12 +73,17 @@ function techFor(player, pos) {
   return raw * TECH_TRUST + TECH_BASE * (1 - TECH_TRUST); // 추정
 }
 
-function familyFit(prefPos, pos) {
+// 표는 대칭이지만 한쪽만 적힌 칸이 있을 수 있어 양방향으로 찾습니다.
+export function moveDistance(from, to) {
+  if (!from || !to) return 3;
+  if (from === to) return 0;
+  const d = MOVE_DIST[from]?.[to] ?? MOVE_DIST[to]?.[from];
+  return d === undefined ? 3 : d;
+}
+
+function movePenalty(prefPos, pos) {
   if (!prefPos) return 0;
-  const a = FAMILY[prefPos], b = FAMILY[pos];
-  if (a === b) return FAMILY_BONUS;
-  if (NEIGHBOR.some(([x, y]) => (a === x && b === y) || (a === y && b === x))) return NEIGHBOR_BNS;
-  return OFF_PENALTY;
+  return MOVE_PENALTY[moveDistance(prefPos, pos)] ?? MOVE_PENALTY[3];
 }
 
 // ── 선수 한 명을 특정 자리에 뒀을 때의 점수 ────────────────────
@@ -91,9 +101,9 @@ export function posScore(player, pos) {
      player.physical * w.physical +
      techFor(player, pos) * w.tech) / 100;
 
-  const bonus =
-    (player.prefPos === pos ? PREF_BONUS : 0) +
-    (player.prefPos === pos ? 0 : familyFit(player.prefPos, pos));
+  const bonus = player.prefPos === pos
+    ? PREF_BONUS
+    : movePenalty(player.prefPos, pos);
 
   return clamp(base + bonus, 0, 120);
 }
@@ -251,6 +261,7 @@ export function bestLineup(players, formation) {
       player,
       score: Math.round(sc),
       onPref: player.prefPos === slot.pos,
+      moveDist: moveDistance(player.prefPos, slot.pos),
     });
     total += sc;
   }

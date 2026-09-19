@@ -121,6 +121,47 @@ const mk = (o) => ({ speed: 65, stamina: 65, physical: 65, techScore: 65, prefPo
 }
 
 // ─────────────────────────────────────────────────────────────
+console.log("\n[2-b] 포지션 이동이 축구적으로 말이 되는가");
+// ─────────────────────────────────────────────────────────────
+
+{
+  const { moveDistance } = mod;
+  const POSITIONS = ["ST","LW","RW","CAM","CM","LB","RB","CB"];
+
+  // 표가 대칭이어야 합니다 — A→B 와 B→A 가 다르면 배치가 방향에 따라 흔들립니다
+  let asym = [];
+  for (const a of POSITIONS) for (const b of POSITIONS) {
+    if (moveDistance(a, b) !== moveDistance(b, a)) asym.push(`${a}/${b}`);
+  }
+  ok(asym.length === 0, "이동 표가 대칭이다", asym.slice(0, 5).join(", "));
+  ok(POSITIONS.every(p => moveDistance(p, p) === 0), "자기 자리 거리는 0");
+
+  const cam = mk({ prefPos: "CAM" });
+  const wing = mk({ prefPos: "LW" });
+
+  // 감독 피드백: 공미가 3-5-2에서 우측 센터백으로 가던 문제
+  ok(posScore(cam, "CB") < posScore(cam, "CM") - 20,
+     "공미를 센터백에 두는 건 중앙 미드보다 훨씬 낮다",
+     `CB ${posScore(cam,"CB").toFixed(1)} vs CM ${posScore(cam,"CM").toFixed(1)}`);
+  ok(posScore(cam, "CB") < posScore(cam, "LW") - 10,
+     "공미는 센터백보다 차라리 윙이 낫다",
+     `CB ${posScore(cam,"CB").toFixed(1)} vs LW ${posScore(cam,"LW").toFixed(1)}`);
+
+  // 감독 피드백: 측면 자원의 윙 ↔ 윙백은 열려 있어야 한다
+  ok(posScore(wing, "LB") > posScore(wing, "CM"),
+     "윙어는 윙백으로 가는 편이 중앙 미드보다 자연스럽다",
+     `LB ${posScore(wing,"LB").toFixed(1)} vs CM ${posScore(wing,"CM").toFixed(1)}`);
+  ok(posScore(wing, "LB") > posScore(wing, "CB") + 20,
+     "윙어는 중앙 수비로는 잘 안 간다",
+     `LB ${posScore(wing,"LB").toFixed(1)} vs CB ${posScore(wing,"CB").toFixed(1)}`);
+
+  // 중앙 미드가 내려서는 건 여전히 가능해야 합니다
+  const cm = mk({ prefPos: "CM" });
+  ok(moveDistance("CM", "CB") < moveDistance("CAM", "CB"),
+     "수비형으로 내려서는 건 중앙 미드가 공미보다 가깝다");
+}
+
+// ─────────────────────────────────────────────────────────────
 console.log("\n[3] 실제 명단으로 배치");
 // ─────────────────────────────────────────────────────────────
 
