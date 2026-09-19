@@ -56,21 +56,29 @@ const MOVE_DIST = {
 // ── 보정값 ─────────────────────────────────────────────────────
 //  거리 3은 막지 않고 크게 깎습니다. 동호회에서는 사람이 모자라면
 //  누구라도 세워야 하므로, 다른 수가 없을 때만 고르게 둡니다.
-const PREF_BONUS = 12;                        // 본인이 뛰던 자리
-const MOVE_PENALTY = [0, -3, -14, -30];       // 거리 0·1·2·3
+const PREF_BONUS = 12;                        // 주포지션 — 평소 뛰는 자리
+const SUB_BONUS  =  6;                        // 부포지션 — 본인이 "여기도 본다"고 한 자리
+const MOVE_PENALTY = [0, -3, -14, -30];       // 그 외에는 거리로 (0·1·2·3)
 
 // 전문 능력을 모르는 포지션에서는 tech 값을 평균 쪽으로 끌어당깁니다.
 // ST로 입력한 선수의 "결정력 87"이 CB의 "빌드업 87"을 뜻하지는 않기 때문입니다.
 // 값을 버리지도, 그대로 믿지도 않는 절충입니다.
-const TECH_TRUST = 0.6;
-const TECH_BASE  = 65;
+//
+// 부포지션은 본인이 "여기도 본다"고 고른 자리라 조금 더 믿습니다.
+// 다만 그 자리의 전문 문항을 받은 건 아니므로 여전히 추정입니다.
+const TECH_TRUST     = 0.6;   // 생판 다른 자리
+const SUB_TECH_TRUST = 0.8;   // 본인이 고른 부포지션
+const TECH_BASE      = 65;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+const canPlay = (player, pos) => !!player.subPos?.includes(pos);
 
 function techFor(player, pos) {
   const raw = player.techScore ?? TECH_BASE;
   if (player.prefPos === pos) return raw;              // 직접 답한 자리
-  return raw * TECH_TRUST + TECH_BASE * (1 - TECH_TRUST); // 추정
+  const trust = canPlay(player, pos) ? SUB_TECH_TRUST : TECH_TRUST;
+  return raw * trust + TECH_BASE * (1 - trust);        // 추정
 }
 
 // 표는 대칭이지만 한쪽만 적힌 칸이 있을 수 있어 양방향으로 찾습니다.
@@ -91,8 +99,11 @@ function movePenalty(prefPos, pos) {
 //  이미 숫자로 환산된 값입니다. (App.jsx 의 toLineupPlayer 가 만듭니다)
 export function posScore(player, pos) {
   // 골키퍼는 오가지 않습니다. 손으로 하는 일이라 필드 능력과 종류가 다릅니다.
-  if (pos === "GK" && player.prefPos !== "GK") return -Infinity;
-  if (pos !== "GK" && player.prefPos === "GK") return -Infinity;
+  // 예외는 본인이 골키퍼를 부포지션으로 고른 경우뿐입니다 —
+  // 동호회에서는 "급하면 내가 선다"는 사람이 실제로 있습니다.
+  const isKeeper = player.prefPos === "GK" || canPlay(player, "GK");
+  if (pos === "GK" && !isKeeper) return -Infinity;
+  if (pos !== "GK" && player.prefPos === "GK" && !canPlay(player, pos)) return -Infinity;
 
   const w = POS_WEIGHTS[pos];
   const base =
@@ -101,8 +112,8 @@ export function posScore(player, pos) {
      player.physical * w.physical +
      techFor(player, pos) * w.tech) / 100;
 
-  const bonus = player.prefPos === pos
-    ? PREF_BONUS
+  const bonus = player.prefPos === pos ? PREF_BONUS
+    : canPlay(player, pos)               ? SUB_BONUS
     : movePenalty(player.prefPos, pos);
 
   return clamp(base + bonus, 0, 120);
@@ -261,6 +272,7 @@ export function bestLineup(players, formation) {
       player,
       score: Math.round(sc),
       onPref: player.prefPos === slot.pos,
+      onSub: player.prefPos !== slot.pos && canPlay(player, slot.pos),
       moveDist: moveDistance(player.prefPos, slot.pos),
     });
     total += sc;

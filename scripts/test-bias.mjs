@@ -40,6 +40,47 @@ console.log(allSame
   ? "  → 입력 자리와 무관하게 같은 포메이션이 1순위입니다."
   : "  → 입력한 자리의 포메이션이 그대로 1순위가 됩니다. 편향이 있습니다.");
 
+// ── 부포지션을 받으면 편향이 줄어드는가 ──────────────────────
+console.log("\n같은 명단에 부포지션을 달아주면 어떻게 달라지나:");
+
+// 실제 동호회처럼, 한 명이 두세 자리를 보는 명단
+const withSubs = (positions, subsMap) =>
+  positions.map(p => ({ ...flat(p), subPos: subsMap[p] || [] }));
+
+const SUBS = {
+  ST:  ["CAM"],            // 내려와 연계도 함
+  LW:  ["RW", "LB"],       // 좌우 다 서고 윙백도 봄
+  RW:  ["LW", "RB"],
+  CAM: ["CM", "ST"],       // 한 칸 내려가거나 올라감
+  CM:  ["CAM", "CB"],      // 수비형으로도 내려섬
+  LB:  ["LW", "CB"],
+  RB:  ["RW", "CB"],
+  CB:  ["CM"],
+  GK:  [],
+};
+
+const spread = [];
+for (const [label, positions] of Object.entries(SQUADS)) {
+  const r = rankFormations(withSubs(positions, SUBS), "textbook");
+  const totals = r.byData.map(x => x.total);
+  const gap = totals[0] - totals[totals.length - 1];
+  spread.push({ label, winner: r.byData[0].formation.name, gap });
+  console.log(`  ${label.padEnd(18)} ${r.byData.map(x => `${x.formation.name} ${x.total}`).join("  ")}   (1등-꼴등 ${gap})`);
+}
+
+// 부포지션이 없을 때의 격차와 비교
+const bareGaps = Object.values(SQUADS).map(positions => {
+  const r = rankFormations(positions.map(flat), "textbook");
+  const t = r.byData.map(x => x.total);
+  return t[0] - t[t.length - 1];
+});
+const avg = a => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
+const bare = avg(bareGaps), withs = avg(spread.map(s => s.gap));
+console.log(`\n  입력 포메이션이 벌리는 격차(평균)  부포지션 없음 ${bare}  →  있음 ${withs}`);
+console.log(withs < bare
+  ? `  → 부포지션이 편향을 ${Math.round((1 - withs / bare) * 100)}% 줄였습니다.`
+  : "  → 부포지션이 편향을 줄이지 못했습니다.");
+
 // 얼마나 큰 편향인지 — 같은 선수단에서 "제자리 배치"와 "한 명 이동"의 점수 차
 console.log("\n보너스 구조가 만드는 차이:");
 const p = flat("CAM");
