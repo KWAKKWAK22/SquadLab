@@ -368,19 +368,41 @@ function buildRoster(playerMap, slots = FORMATION_4231) {
 //  prefPos 는 "그 선수가 입력된 자리" 입니다 — 원래 뛰던 포지션으로 봅니다.
 //  raw 에 원본을 달아두어, 배치가 끝난 뒤 이름·성향을 다시 꺼내 씁니다.
 // ───────────────────────────────────────────────────────────────
-function toLineupPlayers(playerMap) {
-  return FORMATION_4231
+// 명단 전체 — 주전 자리 11칸 + 예비 선수.
+// 예비는 포메이션 자리에 매여 있지 않아 자기 포지션을 data.pos 로 들고 다닙니다.
+const isSubKey = k => /^s\d+$/.test(String(k));
+
+function rosterEntries(playerMap) {
+  const main = FORMATION_4231
     .filter(slot => playerMap[slot.id]?.name)
-    .map(slot => {
-      const p = playerMap[slot.id];
+    .map(slot => ({ key: String(slot.id), pos: slot.pos, sub: false, data: playerMap[slot.id] }));
+  const subs = Object.keys(playerMap || {})
+    .filter(k => isSubKey(k) && playerMap[k]?.name)
+    .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+    .map(k => ({ key: k, pos: playerMap[k].pos || "CM", sub: true, data: playerMap[k] }));
+  return [...main, ...subs];
+}
+
+// 다음 예비 선수에게 줄 키 (s1, s2, …)
+function nextSubKey(playerMap) {
+  const used = Object.keys(playerMap || {}).filter(isSubKey).map(k => Number(k.slice(1)));
+  return "s" + (used.length ? Math.max(...used) + 1 : 1);
+}
+
+function toLineupPlayers(playerMap, attending) {
+  return rosterEntries(playerMap)
+    // attending 이 없으면 전원 참석으로 봅니다
+    .filter(e => !attending || attending.includes(e.key))
+    .map(e => {
+      const p = e.data;
       const techVals = Object.values(p.tech || {}).map(v => TECH_SCORE[v] || 65);
       const techScore = techVals.length
         ? Math.round(techVals.reduce((a, b) => a + b, 0) / techVals.length)
         : 65;
       return {
-        id: slot.id,
+        id: e.key,
         name: p.name,
-        prefPos: slot.pos,
+        prefPos: e.pos,
         speed:    STAT_S[p.physical?.speed] || 65,
         stamina:  STAT_S[p.physical?.stamina] || 65,
         physical: physicalScore(p),
@@ -872,7 +894,9 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
 
 function FormationScreen({ teamName, onTeamNameChange, players, onPlayerSave, onNext, onBack, onDemo }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [pickingSubPos, setPickingSubPos] = useState(false);
   const completedCount = FORMATION_4231.filter(s => players[s.id]?.name).length;
+  const subs = rosterEntries(players).filter(e => e.sub);
   const ready = !!teamName.trim() && completedCount === 11;
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 60px" }}>
@@ -932,13 +956,66 @@ function FormationScreen({ teamName, onTeamNameChange, players, onPlayerSave, on
           })}
         </div>
       </div>
+      {/* ── 예비 선수 ──────────────────────────────────────
+          명단이 11명뿐이면 참석 체크가 의미를 갖지 못합니다.
+          자리에 매이지 않는 선수를 여기서 더합니다. */}
+      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(251,191,36,0.18)", borderRadius: 14, padding: "14px 18px", marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 11, color: "#fbbf24aa", letterSpacing: 1 }}>예비 선수</div>
+          {subs.length > 0 && <div style={{ fontSize: 11, color: "#fbbf24", fontWeight: 700 }}>{subs.length}명</div>}
+          <div style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>선택</div>
+        </div>
+        <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.6, marginBottom: subs.length ? 11 : 12, wordBreak: "keep-all" }}>
+          더 있는 선수를 넣어두면, 라인업 단계에서 <b style={{ color: "#94a3b8" }}>오늘 나오는 사람만 골라</b> 그 인원으로 배치를 계산합니다.
+        </div>
+
+        {subs.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 11 }}>
+            {subs.map(e => {
+              const c = POS_CONFIG[e.pos]?.color || "#4ade80";
+              return (
+                <div key={e.key} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 9, background: `${c}10`, border: `1px solid ${c}30` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: c, minWidth: 30 }}>{e.pos}</div>
+                  <div onClick={() => setSelectedSlot({ id: e.key, pos: e.pos })} style={{ flex: 1, fontSize: 12.5, color: "#f0fdf4", cursor: "pointer" }}>{e.data.name}</div>
+                  <button onClick={() => onPlayerSave(e.key, null)} title="명단에서 빼기"
+                    style={{ background: "transparent", border: "none", color: "#475569", fontSize: 15, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {pickingSubPos ? (
+          <div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>어느 포지션 선수인가요?</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["ST", "LW", "RW", "CAM", "CM", "LB", "RB", "CB", "GK"].map(pos => {
+                const c = POS_CONFIG[pos]?.color || "#4ade80";
+                return (
+                  <button key={pos} onClick={() => { setPickingSubPos(false); setSelectedSlot({ id: nextSubKey(players), pos }); }}
+                    style={{ padding: "7px 13px", borderRadius: 9, border: `1px solid ${c}44`, background: `${c}12`, color: c, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 0.5 }}>
+                    {pos}
+                  </button>
+                );
+              })}
+              <button onClick={() => setPickingSubPos(false)}
+                style={{ padding: "7px 13px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer" }}>취소</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setPickingSubPos(true)}
+            style={{ width: "100%", padding: "10px", borderRadius: 10, border: "1px dashed rgba(251,191,36,0.35)", background: "transparent", color: "#fbbf24", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            + 예비 선수 추가
+          </button>
+        )}
+      </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 처음으로</button>
         <button onClick={() => ready && onNext()} disabled={!ready} style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: ready ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: ready ? "#052e16" : "#334155", fontSize: 15, fontWeight: 700, cursor: ready ? "pointer" : "not-allowed", letterSpacing: 1 }}>
           {ready ? "⚽ 전력 브리핑 보기" : completedCount < 11 ? `${11 - completedCount}명 더 입력해주세요` : "팀 이름을 적어주세요"}
         </button>
       </div>
-      {selectedSlot && <PlayerInputPopup slot={selectedSlot} player={players[selectedSlot.id]} onSave={data => { onPlayerSave(selectedSlot.id, data); setSelectedSlot(null); }} onClose={() => setSelectedSlot(null)} />}
+      {selectedSlot && <PlayerInputPopup slot={selectedSlot} player={players[selectedSlot.id]} onSave={data => { onPlayerSave(selectedSlot.id, isSubKey(selectedSlot.id) ? { ...data, pos: selectedSlot.pos } : data); setSelectedSlot(null); }} onClose={() => setSelectedSlot(null)} />}
     </div>
   );
 }
@@ -1424,13 +1501,18 @@ function CoachSelect({ analysis, teamName, coach, onPickCoach, suggested, sugges
 //  코치 선임 화면과 같은 원칙입니다 — 데이터가 고른 형태와 코치가 고른 형태를
 //  나란히 두고, 코치 보정은 "성향"이라고 따로 이름 붙여 표시합니다.
 // ═══════════════════════════════════════════════════════════════
-function LineupScreen({ teamName, coach, tactic, ranked, picked, onPick, onNext, onBack }) {
+function LineupScreen({ teamName, coach, tactic, ranked, picked, onPick, onNext, onBack, roster, attending, onAttendance }) {
   const [showBench, setShowBench] = useState(false);
-  const dataPick = ranked.dataPick;
-  const coachPick = ranked.coachPick;
-  const changed = dataPick.formation.key !== coachPick.formation.key;
-  const cur = picked;
+  const [showRoster, setShowRoster] = useState(false);
   const accent = coach?.color || "#4ade80";
+  const cur = picked;
+  const enough = !!ranked && !!cur;
+  const dataPick = ranked?.dataPick;
+  const coachPick = ranked?.coachPick;
+  const changed = enough && dataPick.formation.key !== coachPick.formation.key;
+  const attendCount = attending.length;
+  const hasSubs = roster.some(e => e.sub);
+  const allOn = attendCount === roster.length;
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 16px 60px" }}>
@@ -1443,6 +1525,73 @@ function LineupScreen({ teamName, coach, tactic, ranked, picked, onPick, onNext,
         </div>
       </div>
 
+      {/* ── 오늘 나오는 사람 ────────────────────────────────
+          명단이 딱 11명이면 고를 것이 없으므로 접어 둡니다. */}
+      <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${attendCount < 11 ? "rgba(239,68,68,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 13, padding: "12px 15px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "#64748b", letterSpacing: 1, fontWeight: 700 }}>오늘 나오는 사람</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: attendCount < 11 ? "#f87171" : "#e2e8f0", fontFamily: "'Rajdhani',sans-serif" }}>
+            {attendCount} / {roster.length}명
+          </span>
+          {hasSubs && (
+            <button onClick={() => setShowRoster(v => !v)}
+              style={{ marginLeft: "auto", padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
+              {showRoster ? "접기" : "명단 보기"}
+            </button>
+          )}
+        </div>
+
+        {attendCount < 11 && (
+          <div style={{ fontSize: 11.5, color: "#f87171", lineHeight: 1.55, marginTop: 8, wordBreak: "keep-all" }}>
+            11명이 되어야 배치를 계산할 수 있습니다. {11 - attendCount}명 더 골라주세요.
+          </div>
+        )}
+
+        {showRoster && (
+          <div style={{ marginTop: 11 }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 9 }}>
+              <button onClick={() => onAttendance(roster.map(e => e.key))} disabled={allOn}
+                style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(74,222,128,0.3)", background: allOn ? "transparent" : "rgba(74,222,128,0.1)", color: allOn ? "#334155" : "#4ade80", fontSize: 11, cursor: allOn ? "default" : "pointer", fontWeight: 600 }}>
+                전체 선택
+              </button>
+              <button onClick={() => onAttendance([])} disabled={attendCount === 0}
+                style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: attendCount === 0 ? "#334155" : "#94a3b8", fontSize: 11, cursor: attendCount === 0 ? "default" : "pointer", fontWeight: 600 }}>
+                전체 해제
+              </button>
+            </div>
+            <div className="attend-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {roster.map(e => {
+                const on = attending.includes(e.key);
+                const c = POS_CONFIG[e.pos]?.color || "#4ade80";
+                return (
+                  <button key={e.key}
+                    onClick={() => onAttendance(on ? attending.filter(k => k !== e.key) : [...attending, e.key])}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, textAlign: "left",
+                             background: on ? `${c}10` : "rgba(255,255,255,0.02)",
+                             border: `1px solid ${on ? c + "33" : "rgba(255,255,255,0.05)"}`, cursor: "pointer" }}>
+                    <span style={{ width: 14, height: 14, borderRadius: 4, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                                   background: on ? c : "transparent", border: `1px solid ${on ? c : "rgba(255,255,255,0.2)"}`,
+                                   color: "#04160c", fontSize: 10, fontWeight: 700, lineHeight: 1 }}>{on ? "✓" : ""}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: c, minWidth: 28 }}>{e.pos}</span>
+                    <span style={{ fontSize: 12, color: on ? "#f0fdf4" : "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.data.name}</span>
+                    {e.sub && <span style={{ marginLeft: "auto", fontSize: 8.5, color: "#fbbf24aa", flexShrink: 0 }}>예비</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!enough ? (
+        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 14, padding: "34px 18px", textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 26, marginBottom: 10 }}>🧩</div>
+          <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.65, wordBreak: "keep-all" }}>
+            참석 인원이 11명이 되면 여기에 배치가 나옵니다.<br />골키퍼도 한 명 있어야 합니다.
+          </div>
+        </div>
+      ) : (
+      <>
       <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${accent}33`, borderRadius: 14, padding: "14px 16px", marginBottom: 16 }}>
         <div style={{ fontSize: 10, letterSpacing: 1.5, color: "#64748b", fontWeight: 700, marginBottom: 11 }}>같은 선수, 다른 배치</div>
         <div className="lineup-vs" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
@@ -1542,10 +1691,16 @@ function LineupScreen({ teamName, coach, tactic, ranked, picked, onPick, onNext,
         </div>
       )}
 
+      </>
+      )}
+
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 코치 선임</button>
-        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: `linear-gradient(135deg,${tactic?.color || accent}cc,${tactic?.color || accent})`, color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
-          이 배치로 전술 가이드 →
+        <button onClick={() => enough && onNext()} disabled={!enough}
+          style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none",
+                   background: enough ? `linear-gradient(135deg,${tactic?.color || accent}cc,${tactic?.color || accent})` : "rgba(255,255,255,0.06)",
+                   color: enough ? "#fff" : "#334155", fontSize: 14, cursor: enough ? "pointer" : "not-allowed", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
+          {enough ? "이 배치로 전술 가이드 →" : "참석 인원을 채워주세요"}
         </button>
       </div>
     </div>
@@ -2023,6 +2178,7 @@ export default function App() {
   const [coach, setCoach] = useState(null);          // 선임한 코치 (Phase 3)
   const [lineup, setLineup] = useState(null);        // 고른 배치 (Phase 4) — src/lineup.js 가 계산
   const [lineupRanked, setLineupRanked] = useState(null); // 포메이션 3안
+  const [attending, setAttending] = useState(null);  // 오늘 나오는 선수 키. null 이면 전원 참석
   const [analysis, setAnalysis] = useState(null);
   const [result, setResult] = useState(null);
   const [toast, setToast] = useState(null);
@@ -2133,6 +2289,11 @@ export default function App() {
 
   // 라인업을 고르고 나면 이후 화면은 "입력한 자리"가 아니라 "실제로 세운 자리"를 씁니다.
   // 라인업이 없으면(저장해 둔 예전 팀 등) 지금까지처럼 4-2-3-1 로 동작합니다.
+  const roster = rosterEntries(players);
+  // 참석을 한 번도 건드리지 않았으면 전원 참석으로 봅니다.
+  // 명단에서 빠진 선수는 참석 목록에서도 지웁니다.
+  const attendKeys = attending ? attending.filter(k => roster.some(e => e.key === k)) : roster.map(e => e.key);
+
   const activeSlots = lineup?.formation?.slots || FORMATION_4231;
   const activePlayers = lineup
     ? Object.fromEntries(lineup.placements.map(pl => [pl.slotId, pl.player.raw]))
@@ -2155,7 +2316,7 @@ export default function App() {
     // 배치를 아직 계산한 적이 없으면 여기서 계산합니다.
     // 배치 정보가 없는 저장본을 불러왔거나, 단계 바로 건너뛰어 들어온 경우입니다.
     if (key === "lineup" && !lineupRanked) {
-      const ranked = rankFormations(toLineupPlayers(players), coach?.id);
+      const ranked = rankFormations(toLineupPlayers(players, attendKeys), coach?.id);
       setLineupRanked(ranked);
       setLineup(ranked ? ranked.coachPick : null);
     }
@@ -2169,15 +2330,27 @@ export default function App() {
     // 전술이 바뀌면 이전 결과 화면은 더 이상 맞지 않으므로 버립니다
     setResult(null);
     // 배치를 여기서 계산합니다. AI 호출은 없습니다 — 전부 코드 계산입니다.
-    const ranked = rankFormations(toLineupPlayers(players), coach?.id);
+    const ranked = rankFormations(toLineupPlayers(players, attendKeys), coach?.id);
     setLineupRanked(ranked);
     setLineup(ranked ? ranked.coachPick : null);
     // 전술 AI 는 배치가 확정된 뒤에 부릅니다. 자리가 바뀌면 지시도 달라지기 때문입니다.
     setPhase("lineup");
   };
 
+  // 참석이 바뀌면 그 인원으로 배치를 다시 계산합니다 (AI 호출 없음).
+  // 고르고 있던 포메이션은 가능하면 그대로 둡니다 — 사람 빠졌다고 형태까지
+  // 멋대로 바뀌면 비교하던 흐름이 끊깁니다.
+  const handleAttendance = (keys) => {
+    setAttending(keys);
+    const ranked = rankFormations(toLineupPlayers(players, keys), coach?.id);
+    setLineupRanked(ranked);
+    const keep = ranked?.byCoach.find(r => r.formation.key === lineup?.formation?.key);
+    setLineup(keep || ranked?.coachPick || null);
+  };
+
   // 배치 확정 → 그 자리 기준으로 개인 지시를 받아옵니다
   const handleLineupConfirmed = () => {
+    if (!lineup) return;
     const slots = lineup?.formation?.slots || FORMATION_4231;
     const pmap = lineup
       ? Object.fromEntries(lineup.placements.map(pl => [pl.slotId, pl.player.raw]))
@@ -2211,7 +2384,7 @@ export default function App() {
         players: playerList,
         // 배치는 통째로 담지 않고 포메이션 키만 저장합니다.
         // 계산이 결정론적이라 불러올 때 다시 계산해도 같은 배치가 나옵니다.
-        snapshot: { version: 4, players, ai, tacticAi, tactic: selectedTactic, coach: coach?.id || null, formationKey: lineup?.formation?.key || null },
+        snapshot: { version: 4, players, ai, tacticAi, tactic: selectedTactic, coach: coach?.id || null, formationKey: lineup?.formation?.key || null, attending },
       };
       localStorage.setItem("squadlab_teams", JSON.stringify([team, ...saved].slice(0, 10)));
       showToastMsg("💾 팀이 저장되었어요!");
@@ -2238,8 +2411,13 @@ export default function App() {
       setAnalysis(local ? mergeTeamAI(local, snap.ai) : null);
       // 저장해 둔 포메이션으로 배치를 다시 계산합니다 (AI 호출 없음).
       // v3 이하 저장본은 formationKey 가 없으므로 지금까지처럼 4-2-3-1 로 둡니다.
+      setAttending(snap.attending || null);
       if (snap.formationKey) {
-        const ranked = rankFormations(toLineupPlayers(snap.players || {}), snap.coach);
+        const savedRoster = rosterEntries(snap.players || {});
+        const savedAttend = snap.attending
+          ? snap.attending.filter(k => savedRoster.some(e => e.key === k))
+          : savedRoster.map(e => e.key);
+        const ranked = rankFormations(toLineupPlayers(snap.players || {}, savedAttend), snap.coach);
         const found = ranked?.byCoach.find(r => r.formation.key === snap.formationKey);
         setLineupRanked(ranked);
         setLineup(found || ranked?.coachPick || null);
@@ -2256,6 +2434,7 @@ export default function App() {
       setAnalysis(null);
       setLineupRanked(null);
       setLineup(null);
+      setAttending(null);
     }
     setPhase("result");
     showToastMsg(`✓ "${team.teamName}" 불러왔어요!`);
@@ -2299,6 +2478,8 @@ export default function App() {
           .sq-landing-tactic-card { padding: 14px 8px !important; }
           /* 히어로 통계 3개 — 간격 48px 고정이라 360px에서 넘쳤습니다 */
           .sq-landing-stats { gap: 20px !important; }
+          /* 참석 명단 2열 — 체크·포지션·이름이 한 줄에 안 들어갑니다 */
+          .attend-grid { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 380px) {
           .sq-step-label { font-size: 9px !important; letter-spacing: -0.2px; }
@@ -2364,20 +2545,12 @@ export default function App() {
         const why = ai?.coach?.why || `${sug.name}는 "${sug.tagline}" 지금 팀 수치를 보면 그 방향이 가장 무리가 없습니다.`;
         return <CoachSelect analysis={a} teamName={teamName} coach={coach} onPickCoach={setCoach} suggested={sug} suggestWhy={why} onNext={handleTacticSelected} onBack={() => setPhase("team-analysis")} />;
       })()}
-      {phase === "lineup"          && lineupRanked && lineup && (
+      {phase === "lineup"          && (
         <LineupScreen
           teamName={teamName} coach={coach} tactic={selectedTactic}
           ranked={lineupRanked} picked={lineup} onPick={setLineup}
+          roster={roster} attending={attendKeys} onAttendance={handleAttendance}
           onNext={handleLineupConfirmed} onBack={() => setPhase("coach")} />
-      )}
-      {phase === "lineup"          && !lineupRanked && (
-        <div style={{ maxWidth: 560, margin: "60px auto", padding: "0 16px", textAlign: "center" }}>
-          <div style={{ fontSize: 30, marginBottom: 12 }}>🧩</div>
-          <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.7, wordBreak: "keep-all" }}>
-            배치를 계산하려면 골키퍼를 포함해 11명이 필요합니다.
-          </div>
-          <button onClick={() => setPhase("formation")} style={{ marginTop: 18, padding: "11px 20px", borderRadius: 11, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#cbd5e1", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>선수 입력으로</button>
-        </div>
       )}
       {phase === "tactical-guide"  && selectedTactic && <TacticalGuide players={activePlayers} slots={activeSlots} formationName={lineup?.formation?.name || "4-2-3-1"} formationKey={lineup?.formation?.key || "4231"} backLabel={lineup ? "라인업" : "코치 선임"} teamName={teamName} tactic={selectedTactic} tacticAi={tacticAi?.tacticName === selectedTactic.name ? tacticAi : null} tacticAiPending={tacticAiPending} tacticAiError={tacticAiError} onRetryTacticAi={() => requestTacticAI(selectedTactic, players)} onNext={() => setPhase("locker-room")} onBack={() => setPhase(lineup ? "lineup" : "coach")} />}
       {phase === "tactical-guide"  && !selectedTactic && (
