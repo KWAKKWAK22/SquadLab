@@ -30,6 +30,31 @@ const POS_CONFIG = {
   GK:  { label: "골키퍼",             emoji: "🧤", color: "#94a3b8", tech: [{ key: "reflexes", label: "반사신경", options: ["약함", "보통", "슈퍼세이브"] }, { key: "aerialHandling", label: "공중볼 처리", options: ["약함", "보통", "완벽한 제공권"] }, { key: "kickAndBuild", label: "킥력 / 빌드업", options: ["약함", "보통", "정확한 배급"] }], styleSpecific: [{ key: "keeperStyle", label: "플레이 스타일", options: ["스위퍼 키퍼 (박스 밖까지 커버)", "클래식 키퍼 (골문 앞 안정감)"] }] },
 };
 
+
+// 명단에서 고를 수 있는 포지션. 피치 자리가 아니라 "이 선수가 보는 자리"입니다.
+const POSITION_LIST = ["ST", "LW", "RW", "CAM", "CM", "LB", "RB", "CB", "GK"];
+
+// ── 약발이 어디까지 되는가 ────────────────────────────────────
+//
+//  왼발·오른발에 각각 별 다섯 개를 받던 방식을 바꿉니다.
+//  3/4 같은 숫자 쌍이 양발인지 한쪽 위주인지 읽는 사람마다 달랐고,
+//  선수당 별을 열 번, 11명이면 110번 찍어야 했습니다.
+//
+//  포지션마다 약발로 하는 일이 다르므로 문구도 다르게 묻습니다 —
+//  수비수에게 "문전 마무리"를 묻는 건 의미가 없습니다.
+const WEAK_FOOT = {
+  ST:  ["거의 못 씁니다", "가까운 거리는 됩니다", "약발로도 마무리합니다"],
+  LW:  ["거의 못 씁니다", "간단한 패스는 됩니다", "약발로도 크로스를 올립니다"],
+  RW:  ["거의 못 씁니다", "간단한 패스는 됩니다", "약발로도 크로스를 올립니다"],
+  CAM: ["거의 못 씁니다", "간단한 패스는 됩니다", "양쪽으로 다 뿌립니다"],
+  CM:  ["거의 못 씁니다", "간단한 패스는 됩니다", "양쪽으로 다 뿌립니다"],
+  LB:  ["거의 못 씁니다", "걷어낼 수는 있습니다", "약발로도 전진 패스를 넣습니다"],
+  RB:  ["거의 못 씁니다", "걷어낼 수는 있습니다", "약발로도 전진 패스를 넣습니다"],
+  CB:  ["거의 못 씁니다", "걷어낼 수는 있습니다", "약발로도 빌드업합니다"],
+  GK:  ["거의 못 씁니다", "짧게는 찹니다", "양발로 다 찹니다"],
+};
+const weakFootOptions = pos => WEAK_FOOT[pos] || WEAK_FOOT.CM;
+
 const PHYSICAL_STATS = [
   { key: "speed",    label: "속도 / 기동력",   icon: "⚡", levels: [{ value: "하", desc: "조깅 페이스" }, { value: "중", desc: "빠른 편" }, { value: "상", desc: "팀 내 최상위권" }] },
   { key: "stamina",  label: "지구력 / 활동량", icon: "🫀", levels: [{ value: "하", desc: "후반 급격히 처짐" }, { value: "중", desc: "90분 무난히 소화" }, { value: "상", desc: "후반에도 스프린트 가능" }] },
@@ -114,7 +139,9 @@ const TACTICAL_ROLES = {
 // ═══════════════════════════════════════════════════════════════
 // 유틸 함수
 // ═══════════════════════════════════════════════════════════════
-const defaultPlayer = () => ({ name: "", age: "", height: "", weight: "", leftFoot: null, rightFoot: null, physical: {}, tech: {}, style: {}, teamInfluence: {} });
+// mainPos 는 평소 뛰는 자리, subPos 는 "여기도 본다"고 고른 자리들입니다.
+// foot 은 "left" | "right", weakFoot 은 약발 단계 0·1·2 입니다.
+const defaultPlayer = (mainPos = null) => ({ name: "", age: "", height: "", weight: "", mainPos, subPos: [], foot: null, weakFoot: null, physical: {}, tech: {}, style: {}, teamInfluence: {} });
 
 const STAT_S = { "하": 45, "중": 68, "상": 88 };
 
@@ -147,13 +174,18 @@ function physicalScore(player) {
 
 // 5점 척도 두 개를 사람이 읽는 말로 바꿉니다.
 // AI에게 "왼발 2"만 던지면 그게 좋은 건지 나쁜 건지 알 수 없습니다.
-function footNote(lf, rf) {
-  if (!lf || !rf) return null;
-  const gap = Math.abs(lf - rf);
-  const strong = lf > rf ? "왼발" : "오른발";
-  if (gap <= 1) return `양발잡이 (왼${lf}/오${rf})`;
-  if (gap >= 3) return `${strong}만 씀 (왼${lf}/오${rf})`;
-  return `${strong} 위주 (왼${lf}/오${rf})`;
+// AI에게 넘길 한 줄. 숫자 대신 말로 줍니다 —
+// "왼3/오4"만 주면 AI가 그게 좋은 건지 나쁜 건지 모릅니다.
+function footNote(player) {
+  const foot = player?.foot;
+  if (!foot) return null;
+  const main = foot === "left" ? "왼발" : "오른발";
+  const weak = foot === "left" ? "오른발" : "왼발";
+  const lv = player.weakFoot;
+  if (lv === 2) return `${main}잡이지만 양발에 가까움`;
+  if (lv === 1) return `${main}잡이 · ${weak}로 간단한 플레이까지`;
+  if (lv === 0) return `${main}만 씀 · ${weak}은 거의 못 씀`;
+  return `${main}잡이`;
 }
 
 // ── 코치 3인 (Phase 3) ──────────────────────────────────────
@@ -329,7 +361,8 @@ function traitsOf(player, pos) {
   // (체격은 피지컬 점수로도 이미 반영되어 있습니다)
   if (player.height && player.weight) push("체격", `${player.height}cm / ${player.weight}kg`);
   if (player.age) push("나이", `${player.age}세`);
-  push("주발", footNote(player.leftFoot, player.rightFoot));
+  push("주발", footNote(player));
+  if (player.subPos?.length) push("겸할 수 있는 자리", player.subPos.join(", "));
   cfg.tech.forEach(t => push(t.label, player.tech?.[t.key]));
   cfg.styleSpecific.forEach(x => push(x.label, player.style?.[x.key]));
   COMMON_STYLE.forEach(x => push(x.label, player.style?.[x.key]));
@@ -345,10 +378,16 @@ function buildRoster(playerMap, slots = FORMATION_4231) {
     .map(slot => {
       const player = playerMap[slot.id];
       const a = analyzePlayer(player, slot.pos);
+      // 평소 뛰는 자리와 오늘 세운 자리가 다르면 AI에게 알려줍니다.
+      // 모르면 그 선수에게도 평범한 그 포지션 지시를 써 버립니다.
+      const mainPos = player.mainPos || slot.pos;
       return {
         id: slot.id,
         name: player.name,
         pos: slot.pos,
+        mainPos,
+        movedFrom: mainPos !== slot.pos ? mainPos : null,
+        declaredSub: mainPos !== slot.pos && !!player.subPos?.includes(slot.pos),
         overall: a.overall,
         grades: {
           속도: gradeOf(a.stats.speed).label,
@@ -370,23 +409,18 @@ function buildRoster(playerMap, slots = FORMATION_4231) {
 // ───────────────────────────────────────────────────────────────
 // 명단 전체 — 주전 자리 11칸 + 예비 선수.
 // 예비는 포메이션 자리에 매여 있지 않아 자기 포지션을 data.pos 로 들고 다닙니다.
-const isSubKey = k => /^s\d+$/.test(String(k));
-
+// 명단 — 선수는 포메이션 자리가 아니라 자기 포지션을 들고 다닙니다.
+// 키는 p1, p2 … 로, 어떤 포메이션과도 무관합니다.
 function rosterEntries(playerMap) {
-  const main = FORMATION_4231
-    .filter(slot => playerMap[slot.id]?.name)
-    .map(slot => ({ key: String(slot.id), pos: slot.pos, sub: false, data: playerMap[slot.id] }));
-  const subs = Object.keys(playerMap || {})
-    .filter(k => isSubKey(k) && playerMap[k]?.name)
-    .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
-    .map(k => ({ key: k, pos: playerMap[k].pos || "CM", sub: true, data: playerMap[k] }));
-  return [...main, ...subs];
+  return Object.keys(playerMap || {})
+    .filter(k => playerMap[k]?.name)
+    .sort((a, b) => (Number(String(a).slice(1)) || 0) - (Number(String(b).slice(1)) || 0))
+    .map(k => ({ key: k, pos: playerMap[k].mainPos || "CM", data: playerMap[k] }));
 }
 
-// 다음 예비 선수에게 줄 키 (s1, s2, …)
-function nextSubKey(playerMap) {
-  const used = Object.keys(playerMap || {}).filter(isSubKey).map(k => Number(k.slice(1)));
-  return "s" + (used.length ? Math.max(...used) + 1 : 1);
+function nextPlayerKey(playerMap) {
+  const used = Object.keys(playerMap || {}).map(k => Number(String(k).slice(1))).filter(n => !isNaN(n));
+  return "p" + (used.length ? Math.max(...used) + 1 : 1);
 }
 
 function toLineupPlayers(playerMap, attending) {
@@ -403,6 +437,7 @@ function toLineupPlayers(playerMap, attending) {
         id: e.key,
         name: p.name,
         prefPos: e.pos,
+        subPos: p.subPos || [],
         speed:    STAT_S[p.physical?.speed] || 65,
         stamina:  STAT_S[p.physical?.stamina] || 65,
         physical: physicalScore(p),
@@ -427,14 +462,28 @@ function toLineupPlayers(playerMap, attending) {
 // ───────────────────────────────────────────────────────────────
 const LV = ["하", "중", "상"];
 
+// 데모 선수가 겸할 수 있는 자리. 축구에서 실제로 흔한 겸업만 붙였습니다.
+const DEMO_SUBS = {
+  ST: ["CAM"], LW: ["RW", "LB"], RW: ["LW", "RB"], CAM: ["CM", "ST"],
+  CM: ["CAM", "CB"], LB: ["LW"], RB: ["RW"], CB: ["CM"], GK: [],
+};
+
 function presetPlayer(pos, spec) {
   const cfg = POS_CONFIG[pos] || POS_CONFIG["CM"];
   const [name, age, height, weight, lf, rf, phys, tech, styleIdx, common, infl] = spec;
   // CB의 선호 움직임과 GK의 플레이 스타일은 선택지가 2개뿐이라 번호를 잘라 줍니다
   const pick = (opts, i) => opts[Math.min(i, opts.length - 1)];
+  // 데모 표는 예전 형식(왼발·오른발 1~5)으로 적혀 있습니다.
+  // 33명을 다시 쓰는 대신 여기서 새 형식으로 옮깁니다 —
+  // 두 발 차이가 작으면 양발에 가깝고, 크면 한쪽만 쓰는 선수입니다.
+  const gap = Math.abs(lf - rf);
   const p = {
     name, age: String(age), height: String(height), weight: String(weight),
-    leftFoot: lf, rightFoot: rf, physical: {}, tech: {}, style: {}, teamInfluence: {},
+    mainPos: pos,
+    subPos: DEMO_SUBS[pos] || [],
+    foot: lf > rf ? "left" : "right",
+    weakFoot: gap <= 1 ? 2 : gap >= 3 ? 0 : 1,
+    physical: {}, tech: {}, style: {}, teamInfluence: {},
   };
   PHYSICAL_STATS.forEach((x, i) => { p.physical[x.key] = LV[phys[i]]; });
   cfg.tech.forEach((x, i) => { p.tech[x.key] = pick(x.options, tech[i]); });
@@ -446,7 +495,8 @@ function presetPlayer(pos, spec) {
 
 function buildDemoSquad(team) {
   const squad = {};
-  FORMATION_4231.forEach((slot, i) => { squad[slot.id] = presetPlayer(slot.pos, team.squad[i]); });
+  // 데모 명단도 자리가 아니라 선수 목록입니다.
+  FORMATION_4231.forEach((slot, i) => { squad["p" + (i + 1)] = presetPlayer(slot.pos, team.squad[i]); });
   return squad;
 }
 
@@ -549,17 +599,6 @@ const SectionLabel = ({ number, children }) => (
     <span style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", borderRadius: 6, padding: "3px 9px", fontSize: 10, fontWeight: 700, color: "#052e16", letterSpacing: 1 }}>0{number}</span>
     <span style={{ fontSize: 14, fontWeight: 700, color: "#f0fdf4" }}>{children}</span>
     <div style={{ flex: 1, height: 1, background: "rgba(74,222,128,0.1)" }} />
-  </div>
-);
-
-const FootRating = ({ label, value, onChange }) => (
-  <div>
-    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 9 }}>{label}</div>
-    <div style={{ display: "flex", gap: 7 }}>
-      {[1, 2, 3, 4, 5].map(n => (
-        <button key={n} onClick={() => onChange(n === value ? null : n)} style={{ flex: "1 1 0", minWidth: 0, maxWidth: 38, aspectRatio: "1 / 1", borderRadius: "50%", border: value && n <= value ? "2px solid #4ade80" : "1px solid rgba(255,255,255,0.1)", background: value && n <= value ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.03)", color: value && n <= value ? "#4ade80" : "#475569", fontWeight: value === n ? 700 : 500, fontSize: 14, cursor: "pointer", transition: "all 0.15s" }}>{n}</button>
-      ))}
-    </div>
   </div>
 );
 
@@ -794,12 +833,28 @@ function LandingPage({ onStart, onDemo }) {
 // Phase 1: 포메이션 + 선수 입력 팝업
 // ═══════════════════════════════════════════════════════════════
 function PlayerInputPopup({ slot, player, onSave, onClose }) {
-  const [form, setForm] = useState(player || defaultPlayer());
-  const config = POS_CONFIG[slot.pos] || POS_CONFIG["CM"];
+  const [form, setForm] = useState(player || defaultPlayer(slot?.pos));
+  const mainPos = form.mainPos || slot?.pos || "CM";
+  const config = POS_CONFIG[mainPos] || POS_CONFIG["CM"];
   const setTech = (k, v) => setForm(f => ({ ...f, tech: { ...f.tech, [k]: v } }));
   const setStyle = (k, v) => setForm(f => ({ ...f, style: { ...f.style, [k]: v } }));
   const setTI = (k, v) => setForm(f => ({ ...f, teamInfluence: { ...f.teamInfluence, [k]: v } }));
-  const isComplete = form.name && Number(form.height) > 0 && Number(form.weight) > 0 && form.leftFoot && form.rightFoot && PHYSICAL_STATS.every(s => form.physical[s.key]) && config.tech.every(t => form.tech[t.key]) && config.styleSpecific.every(s => form.style[s.key]) && COMMON_STYLE.every(s => form.style[s.key]) && TEAM_INFLUENCE.every(t => form.teamInfluence[t.key]);
+
+  // 주포지션을 바꾸면 그 포지션 전용 답(기술·선호 움직임)은 버립니다.
+  // 스트라이커의 "결정력"을 센터백의 "빌드업"으로 옮겨 쓸 수는 없기 때문입니다.
+  const changeMainPos = (pos) => setForm(f => {
+    if (f.mainPos === pos) return f;
+    const style = { ...f.style };
+    delete style.movement;
+    delete style.keeperStyle;
+    return { ...f, mainPos: pos, tech: {}, style, weakFoot: null, subPos: (f.subPos || []).filter(p => p !== pos) };
+  });
+  const toggleSub = (pos) => setForm(f => {
+    const cur = f.subPos || [];
+    return { ...f, subPos: cur.includes(pos) ? cur.filter(p => p !== pos) : [...cur, pos] };
+  });
+
+  const isComplete = form.name && Number(form.height) > 0 && Number(form.weight) > 0 && form.foot && form.weakFoot !== null && form.weakFoot !== undefined && PHYSICAL_STATS.every(s => form.physical[s.key]) && config.tech.every(t => form.tech[t.key]) && config.styleSpecific.every(s => form.style[s.key]) && COMMON_STYLE.every(s => form.style[s.key]) && TEAM_INFLUENCE.every(t => form.teamInfluence[t.key]);
 
   return (
     <div className="sq-popup-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 200, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "20px 16px" }}>
@@ -807,7 +862,7 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <span style={{ background: `linear-gradient(135deg,${config.color}cc,${config.color})`, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: 1 }}>{slot.pos}</span>
+              <span style={{ background: `linear-gradient(135deg,${config.color}cc,${config.color})`, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: 1 }}>{mainPos}</span>
               <span style={{ fontSize: 13, color: config.color }}>{config.label}</span>
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#f0fdf4" }}>선수 정보 입력</div>
@@ -826,12 +881,72 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
         <div style={{ fontSize: 11, color: "#475569", marginTop: -6, marginBottom: 16, lineHeight: 1.5 }}>
           키·몸무게는 아래 <b style={{ color: "#94a3b8" }}>몸싸움 적극성</b>과 합쳐져 피지컬 점수가 됩니다.
         </div>
-        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", marginBottom: 22 }}>
-          <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 14 }}>🦶 주발 능력 (5점 만점)</div>
-          <div className="sq-foot-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            <FootRating label="왼발" value={form.leftFoot} onChange={v => setForm(f => ({ ...f, leftFoot: v }))} />
-            <FootRating label="오른발" value={form.rightFoot} onChange={v => setForm(f => ({ ...f, rightFoot: v }))} />
+        {/* ── 포지션 ── 자리가 아니라 "이 선수가 보는 자리"입니다 */}
+        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 4 }}>📍 주포지션</div>
+          <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, lineHeight: 1.5 }}>평소 뛰는 자리입니다. 아래 전문 질문이 여기에 맞춰 바뀝니다.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {POSITION_LIST.map(pos => {
+              const on = mainPos === pos, c = POS_CONFIG[pos]?.color || "#4ade80";
+              return (
+                <button key={pos} onClick={() => changeMainPos(pos)}
+                  style={{ padding: "7px 13px", borderRadius: 9, border: `1px solid ${on ? c : "rgba(255,255,255,0.1)"}`, background: on ? `${c}22` : "transparent", color: on ? c : "#64748b", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 0.5 }}>
+                  {pos}
+                </button>
+              );
+            })}
           </div>
+
+          <div style={{ fontSize: 11, color: "#fbbf24aa", letterSpacing: 1, marginBottom: 4 }}>📍 겸할 수 있는 자리 <span style={{ color: "#475569", letterSpacing: 0 }}>· 선택</span></div>
+          <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, lineHeight: 1.5, wordBreak: "keep-all" }}>
+            여기도 설 수 있다면 골라주세요. 포메이션을 바꿀 때 이 선수를 쓸 수 있는 자리가 늘어납니다.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {POSITION_LIST.filter(p => p !== mainPos).map(pos => {
+              const on = form.subPos?.includes(pos), c = POS_CONFIG[pos]?.color || "#4ade80";
+              return (
+                <button key={pos} onClick={() => toggleSub(pos)}
+                  style={{ padding: "6px 11px", borderRadius: 8, border: `1px dashed ${on ? c : "rgba(255,255,255,0.1)"}`, background: on ? `${c}14` : "transparent", color: on ? c : "#475569", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
+                  {on ? "✓ " : ""}{pos}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── 주발 ── 별 열 개 대신 주발 하나 + 약발이 어디까지 되는지 ── */}
+        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px", marginBottom: 22 }}>
+          <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 10 }}>🦶 주발</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: form.foot ? 16 : 0 }}>
+            {[{ v: "left", label: "왼발잡이" }, { v: "right", label: "오른발잡이" }].map(o => {
+              const on = form.foot === o.v;
+              return (
+                <button key={o.v} onClick={() => setForm(f => ({ ...f, foot: o.v }))}
+                  style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1px solid ${on ? "#4ade80" : "rgba(255,255,255,0.1)"}`, background: on ? "rgba(74,222,128,0.12)" : "transparent", color: on ? "#4ade80" : "#64748b", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {form.foot && (
+            <>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+                {form.foot === "left" ? "오른발" : "왼발"}은 어디까지 되나요?
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {weakFootOptions(mainPos).map((label, i) => {
+                  const on = form.weakFoot === i;
+                  return (
+                    <button key={i} onClick={() => setForm(f => ({ ...f, weakFoot: i }))}
+                      style={{ padding: "9px 12px", borderRadius: 9, border: `1px solid ${on ? "#4ade80" : "rgba(255,255,255,0.08)"}`, background: on ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.02)", color: on ? "#f0fdf4" : "#64748b", fontSize: 12.5, cursor: "pointer", textAlign: "left", fontWeight: on ? 600 : 400 }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         <SectionLabel number={2}>신체 및 운동 능력</SectionLabel>
@@ -892,130 +1007,131 @@ function PlayerInputPopup({ slot, player, onSave, onClose }) {
   );
 }
 
-function FormationScreen({ teamName, onTeamNameChange, players, onPlayerSave, onNext, onBack, onDemo }) {
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const [pickingSubPos, setPickingSubPos] = useState(false);
-  const completedCount = FORMATION_4231.filter(s => players[s.id]?.name).length;
-  const subs = rosterEntries(players).filter(e => e.sub);
-  const ready = !!teamName.trim() && completedCount === 11;
+function FormationScreen({ teamName, onTeamNameChange, players, onPlayerSave, onClearAll, onNext, onBack, onDemo }) {
+  const [editing, setEditing] = useState(null);     // { id, pos } — 팝업에 넘길 값
+  const [pickingPos, setPickingPos] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const roster = rosterEntries(players);
+  const keepers = roster.filter(e => e.pos === "GK" || e.data.subPos?.includes("GK"));
+  const enough = roster.length >= 11;
+  const hasKeeper = keepers.length > 0;
+  const ready = !!teamName.trim() && enough && hasKeeper;
+
+  const reason =
+    !enough      ? `${11 - roster.length}명 더 등록해주세요`
+    : !hasKeeper ? "골키퍼를 볼 수 있는 선수가 한 명 필요해요"
+    : !teamName.trim() ? "팀 이름을 적어주세요"
+    : null;
+
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 60px" }}>
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 2, marginBottom: 6 }}>STEP 1</div>
         <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>{teamName.trim() || "팀 구성"}</div>
-        <div style={{ fontSize: 13, color: "#475569", marginTop: 4 }}>팀 이름을 적고, 포지션을 눌러 선수 정보를 채우세요</div>
+        <div style={{ fontSize: 13, color: "#475569", marginTop: 4, lineHeight: 1.6, wordBreak: "keep-all" }}>
+          우리 팀 선수들을 등록하세요. <b style={{ color: "#94a3b8" }}>포지션은 나중에 계산이 정해줍니다</b> — 지금은 각자 평소 뛰는 자리만 적으면 됩니다.
+        </div>
       </div>
-      {/* 팀 이름 — 예전에는 이 입력 하나 때문에 화면이 따로 있었습니다 */}
+
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 8 }}>팀 이름</div>
-        <input value={teamName} onChange={e => onTeamNameChange(e.target.value)} placeholder="예) FC 친구들" maxLength={20} style={{ width: "100%", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 16 }} />
+        <input value={teamName} onChange={e => onTeamNameChange(e.target.value)} placeholder="예) FC 친구들" maxLength={20}
+          style={{ width: "100%", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f0fdf4", fontSize: 16 }} />
       </div>
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <div style={{ background: "linear-gradient(135deg,#16a34a,#4ade80)", borderRadius: 8, padding: "6px 16px", fontSize: 13, fontWeight: 700, color: "#052e16", letterSpacing: 2, whiteSpace: "nowrap" }}>4-2-3-1</div>
-          <span style={{ fontSize: 13, color: "#475569", whiteSpace: "nowrap" }}>{completedCount} / 11명 완료</span>
-          <button onClick={onDemo} style={{ marginLeft: "auto", padding: "6px 13px", borderRadius: 8, border: "1px solid rgba(74,222,128,0.28)", background: "rgba(74,222,128,0.07)", color: "#4ade80", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>⚡ 데모 팀으로 채우기</button>
+
+      {/* 명단 헤더 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ background: enough ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 700, color: enough ? "#052e16" : "#64748b", letterSpacing: 1, whiteSpace: "nowrap" }}>
+          명단 {roster.length}명
         </div>
-        <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${(completedCount / 11) * 100}%`, background: "linear-gradient(90deg,#16a34a,#4ade80)", borderRadius: 2, transition: "width 0.4s" }} />
-        </div>
-      </div>
-      <div style={{ position: "relative", width: "100%", paddingBottom: "130%", background: "linear-gradient(180deg,#1a4a2a,#1e5c30,#1a4a2a)", borderRadius: 16, border: "2px solid rgba(74,222,128,0.2)", overflow: "hidden", marginBottom: 18 }}>
-        {[...Array(8)].map((_, i) => <div key={i} style={{ position: "absolute", top: `${i * 12.5}%`, left: 0, right: 0, height: "6.25%", background: i % 2 === 0 ? "rgba(0,0,0,0.08)" : "transparent" }} />)}
-        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} viewBox="0 0 100 130" preserveAspectRatio="none">
-          <rect x="4" y="3" width="92" height="124" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
-          <line x1="4" y1="65" x2="96" y2="65" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
-          <circle cx="50" cy="65" r="12" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
-          <rect x="22" y="3" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-          <rect x="22" y="109" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-          <rect x="40" y="1.5" width="20" height="3" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.6" />
-          <rect x="40" y="125.5" width="20" height="3" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.6" />
-        </svg>
-        {FORMATION_4231.map(slot => {
-          const p = players[slot.id]; const filled = !!p?.name;
-          const posColor = POS_CONFIG[slot.pos]?.color || "#4ade80";
-          return (
-            <button key={slot.id} onClick={() => setSelectedSlot(slot)} style={{ position: "absolute", left: `${slot.x}%`, top: `${slot.y}%`, transform: "translate(-50%,-50%)", width: 52, height: 52, borderRadius: "50%", border: filled ? `2.5px solid ${posColor}` : "2px dashed rgba(255,255,255,0.35)", background: filled ? `${posColor}33` : "rgba(0,0,0,0.45)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: filled ? `0 0 12px ${posColor}44` : "none", padding: 2 }}>
-              {filled ? (<><div style={{ fontSize: 9, fontWeight: 700, color: posColor }}>{slot.pos}</div><div style={{ fontSize: 10, fontWeight: 700, color: "#f0fdf4", maxWidth: 44, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div></>) : (<><div style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>{slot.pos}</div><div style={{ fontSize: 16, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>+</div></>)}
+        {roster.length > 0 && (
+          <div style={{ fontSize: 11.5, color: hasKeeper ? "#64748b" : "#f87171" }}>
+            {hasKeeper ? `골키퍼 ${keepers.length}명` : "골키퍼 없음"}
+          </div>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button onClick={onDemo} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(74,222,128,0.3)", background: "rgba(74,222,128,0.08)", color: "#4ade80", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>⚡ 데모 팀</button>
+          {roster.length > 0 && (
+            <button
+              onClick={() => { if (confirmClear) { onClearAll(); setConfirmClear(false); } else setConfirmClear(true); }}
+              onBlur={() => setConfirmClear(false)}
+              style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${confirmClear ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.1)"}`, background: confirmClear ? "rgba(239,68,68,0.12)" : "transparent", color: confirmClear ? "#f87171" : "#64748b", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {confirmClear ? "정말 지울까요?" : "전체 지우기"}
             </button>
-          );
-        })}
+          )}
+        </div>
       </div>
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.15)", borderRadius: 14, padding: "14px 18px", marginBottom: 18 }}>
-        <div style={{ fontSize: 11, color: "#4ade8099", letterSpacing: 1, marginBottom: 10 }}>선수 현황</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-          {FORMATION_4231.map(slot => {
-            const p = players[slot.id];
-            const posColor = POS_CONFIG[slot.pos]?.color || "#4ade80";
+
+      {/* 명단 카드 */}
+      {roster.length === 0 ? (
+        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 14, padding: "36px 18px", textAlign: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 26, marginBottom: 10 }}>📋</div>
+          <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.65, wordBreak: "keep-all" }}>
+            아직 등록된 선수가 없습니다.<br />아래에서 한 명씩 추가하거나, 데모 팀으로 채워보세요.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
+          {roster.map(e => {
+            const c = POS_CONFIG[e.pos]?.color || "#4ade80";
+            const ovr = analyzePlayer(e.data, e.pos).overall;
             return (
-              <div key={slot.id} onClick={() => setSelectedSlot(slot)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: p?.name ? `${posColor}10` : "rgba(255,255,255,0.02)", border: `1px solid ${p?.name ? `${posColor}33` : "rgba(255,255,255,0.05)"}`, cursor: "pointer" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: posColor, minWidth: 30 }}>{slot.pos}</div>
-                <div style={{ fontSize: 12, color: p?.name ? "#f0fdf4" : "#334155" }}>{p?.name || "미입력"}</div>
+              <div key={e.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 13px", borderRadius: 11, background: `${c}0d`, border: `1px solid ${c}2b` }}>
+                <div style={{ width: 34, textAlign: "center", fontSize: 11, fontWeight: 700, color: c, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 0.5, flexShrink: 0 }}>{e.pos}</div>
+                <div onClick={() => setEditing({ id: e.key, pos: e.pos })} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+                  <div style={{ fontSize: 13.5, color: "#f0fdf4", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.data.name}</div>
+                  {e.data.subPos?.length > 0 && (
+                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>겸 {e.data.subPos.join(" · ")}</div>
+                  )}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: c, fontFamily: "'Rajdhani',sans-serif", flexShrink: 0 }}>{ovr}</div>
+                <button onClick={() => onPlayerSave(e.key, null)} title="명단에서 빼기"
+                  style={{ background: "transparent", border: "none", color: "#475569", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
               </div>
             );
           })}
         </div>
-      </div>
-      {/* ── 예비 선수 ──────────────────────────────────────
-          명단이 11명뿐이면 참석 체크가 의미를 갖지 못합니다.
-          자리에 매이지 않는 선수를 여기서 더합니다. */}
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(251,191,36,0.18)", borderRadius: 14, padding: "14px 18px", marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-          <div style={{ fontSize: 11, color: "#fbbf24aa", letterSpacing: 1 }}>예비 선수</div>
-          {subs.length > 0 && <div style={{ fontSize: 11, color: "#fbbf24", fontWeight: 700 }}>{subs.length}명</div>}
-          <div style={{ marginLeft: "auto", fontSize: 10, color: "#475569" }}>선택</div>
-        </div>
-        <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.6, marginBottom: subs.length ? 11 : 12, wordBreak: "keep-all" }}>
-          더 있는 선수를 넣어두면, 라인업 단계에서 <b style={{ color: "#94a3b8" }}>오늘 나오는 사람만 골라</b> 그 인원으로 배치를 계산합니다.
-        </div>
+      )}
 
-        {subs.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 11 }}>
-            {subs.map(e => {
-              const c = POS_CONFIG[e.pos]?.color || "#4ade80";
+      {/* 선수 추가 */}
+      {pickingPos ? (
+        <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 12, padding: "13px 15px", marginBottom: 18 }}>
+          <div style={{ fontSize: 11.5, color: "#94a3b8", marginBottom: 9 }}>평소 어느 자리에서 뛰나요?</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {POSITION_LIST.map(pos => {
+              const c = POS_CONFIG[pos]?.color || "#4ade80";
               return (
-                <div key={e.key} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", borderRadius: 9, background: `${c}10`, border: `1px solid ${c}30` }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: c, minWidth: 30 }}>{e.pos}</div>
-                  <div onClick={() => setSelectedSlot({ id: e.key, pos: e.pos })} style={{ flex: 1, fontSize: 12.5, color: "#f0fdf4", cursor: "pointer" }}>{e.data.name}</div>
-                  <button onClick={() => onPlayerSave(e.key, null)} title="명단에서 빼기"
-                    style={{ background: "transparent", border: "none", color: "#475569", fontSize: 15, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
-                </div>
+                <button key={pos} onClick={() => { setPickingPos(false); setEditing({ id: nextPlayerKey(players), pos }); }}
+                  style={{ padding: "7px 13px", borderRadius: 9, border: `1px solid ${c}44`, background: `${c}12`, color: c, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 0.5 }}>{pos}</button>
               );
             })}
+            <button onClick={() => setPickingPos(false)}
+              style={{ padding: "7px 13px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer" }}>취소</button>
           </div>
-        )}
+        </div>
+      ) : (
+        <button onClick={() => setPickingPos(true)}
+          style={{ width: "100%", padding: "12px", borderRadius: 11, border: "1px dashed rgba(74,222,128,0.35)", background: "transparent", color: "#4ade80", fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 18 }}>
+          + 선수 추가
+        </button>
+      )}
 
-        {pickingSubPos ? (
-          <div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>어느 포지션 선수인가요?</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {["ST", "LW", "RW", "CAM", "CM", "LB", "RB", "CB", "GK"].map(pos => {
-                const c = POS_CONFIG[pos]?.color || "#4ade80";
-                return (
-                  <button key={pos} onClick={() => { setPickingSubPos(false); setSelectedSlot({ id: nextSubKey(players), pos }); }}
-                    style={{ padding: "7px 13px", borderRadius: 9, border: `1px solid ${c}44`, background: `${c}12`, color: c, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 0.5 }}>
-                    {pos}
-                  </button>
-                );
-              })}
-              <button onClick={() => setPickingSubPos(false)}
-                style={{ padding: "7px 13px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer" }}>취소</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setPickingSubPos(true)}
-            style={{ width: "100%", padding: "10px", borderRadius: 10, border: "1px dashed rgba(251,191,36,0.35)", background: "transparent", color: "#fbbf24", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-            + 예비 선수 추가
-          </button>
-        )}
-      </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 처음으로</button>
-        <button onClick={() => ready && onNext()} disabled={!ready} style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: ready ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: ready ? "#052e16" : "#334155", fontSize: 15, fontWeight: 700, cursor: ready ? "pointer" : "not-allowed", letterSpacing: 1 }}>
-          {ready ? "⚽ 전력 브리핑 보기" : completedCount < 11 ? `${11 - completedCount}명 더 입력해주세요` : "팀 이름을 적어주세요"}
+        <button onClick={() => ready && onNext()} disabled={!ready}
+          style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: ready ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", color: ready ? "#052e16" : "#334155", fontSize: 15, fontWeight: 700, cursor: ready ? "pointer" : "not-allowed", letterSpacing: 1 }}>
+          {ready ? "⚽ 전력 브리핑 보기" : reason}
         </button>
       </div>
-      {selectedSlot && <PlayerInputPopup slot={selectedSlot} player={players[selectedSlot.id]} onSave={data => { onPlayerSave(selectedSlot.id, isSubKey(selectedSlot.id) ? { ...data, pos: selectedSlot.pos } : data); setSelectedSlot(null); }} onClose={() => setSelectedSlot(null)} />}
+
+      {editing && (
+        <PlayerInputPopup
+          slot={{ id: editing.id, pos: editing.pos }}
+          player={players[editing.id]}
+          onSave={data => { onPlayerSave(editing.id, data); setEditing(null); }}
+          onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }
@@ -1097,7 +1213,8 @@ function PlayerCard({ player, slot, ai, aiPending }) {
 // 전력 브리핑 안에서 필요할 때만 펼치는 상세 보기로 접어 넣었습니다.
 function SquadDetailModal({ players, teamName, onClose, ai, aiPending, startIndex = 0 }) {
   const [current, setCurrent] = useState(startIndex);
-  const slots = FORMATION_4231;
+  // 자리가 아니라 명단 순서로 넘깁니다. 11명보다 많아도 전부 보입니다.
+  const slots = rosterEntries(players).map(e => ({ id: e.key, pos: e.pos }));
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.88)", zIndex: 210, overflowY: "auto", padding: "20px 0" }}>
     <div onClick={e => e.stopPropagation()} style={{ maxWidth: 680, margin: "0 auto", padding: "0 16px 40px" }}>
@@ -1194,9 +1311,9 @@ function mergeTeamAI(local, ai) {
 
 // 11명을 OVR 순으로 세워 에이스와 보완 대상을 뽑습니다.
 function squadHighlights(players, ai) {
-  const ranked = FORMATION_4231
-    .filter(slot => players[slot.id]?.name)
-    .map(slot => {
+  const ranked = rosterEntries(players)
+    .map(e => {
+      const slot = { id: e.key, pos: e.pos };
       const local = analyzePlayer(players[slot.id], slot.pos);
       const a = ai?.players?.[slot.id];
       return {
@@ -1314,7 +1431,7 @@ function TeamAnalysis({ players, teamName, onNext, onBack, ai, aiPending, aiErro
       {showSquad && (
         <SquadDetailModal
           players={players} teamName={teamName} ai={ai} aiPending={aiPending}
-          startIndex={Math.max(0, FORMATION_4231.findIndex(s => s.id === showSquad))}
+          startIndex={Math.max(0, rosterEntries(players).findIndex(e => e.key === showSquad))}
           onClose={() => setShowSquad(false)}
         />
       )}
@@ -1995,7 +2112,7 @@ function ResultScreen({ result, players, onBack, onSave, onGoTo, canGoTo }) {
   // 현재 players state 는 비어 있으므로 저장본을 우선 사용합니다.
   const playerList = (result.players && result.players.length)
     ? result.players
-    : FORMATION_4231.map(s => ({ name: players[s.id]?.name || "?", pos: s.pos }));
+    : rosterEntries(players).map(e => ({ name: e.data.name, pos: e.pos }));
 
   // 실제 저장은 App이 합니다 — 선수 입력 원본과 AI 결과가 그쪽 state에 있기 때문입니다
   const handleSave = () => {
@@ -2285,7 +2402,7 @@ export default function App() {
   // ── 단계 이동 ────────────────────────────────────────────────
   // 상단 단계 바를 클릭해서 앞뒤로 오갈 수 있게 합니다.
   // 단, 그 화면을 그릴 데이터가 없으면 눌리지 않습니다 (빈 화면 방지).
-  const hasPlayers = FORMATION_4231.some(s => players[s.id]?.name);
+  const hasPlayers = rosterEntries(players).length > 0;
 
   // 라인업을 고르고 나면 이후 화면은 "입력한 자리"가 아니라 "실제로 세운 자리"를 씁니다.
   // 라인업이 없으면(저장해 둔 예전 팀 등) 지금까지처럼 4-2-3-1 로 동작합니다.
@@ -2322,7 +2439,25 @@ export default function App() {
     }
     setPhase(key);
   };
-  const savePlayer = (slotId, data) => setPlayers(prev => ({ ...prev, [slotId]: data }));
+  const savePlayer = (slotId, data) => setPlayers(prev => {
+    if (data === null) {
+      // 명단에서 뺄 때는 키째로 지웁니다. null 을 남겨두면 다음 번호 계산이 어긋납니다.
+      const next = { ...prev };
+      delete next[slotId];
+      return next;
+    }
+    return { ...prev, [slotId]: data };
+  });
+
+  // 명단을 통째로 비우면 뒤따르는 결과도 같이 버립니다 — 남겨두면 없는 선수의 분석이 떠다닙니다.
+  const clearAllPlayers = () => {
+    setPlayers({});
+    setAi(null); setAiError(null);
+    setTacticAi(null); setTacticAiError(null);
+    setAnalysis(null); setSelectedTactic(null); setCoach(null);
+    setLineup(null); setLineupRanked(null); setAttending(null);
+    setResult(null);
+  };
 
   const handleTacticSelected = (tactic, analysisData) => {
     setSelectedTactic(tactic);
@@ -2530,7 +2665,7 @@ export default function App() {
       )}
 
       {phase === "landing"         && <LandingPage onStart={() => setPhase("formation")} onDemo={() => setDemoPicker("jump")} />}
-      {phase === "formation"       && <FormationScreen teamName={teamName} onTeamNameChange={setTeamName} players={players} onPlayerSave={savePlayer} onNext={() => { requestAI(players); setPhase("team-analysis"); }} onBack={() => setPhase("landing")} onDemo={() => setDemoPicker("fill")} />}
+      {phase === "formation"       && <FormationScreen teamName={teamName} onTeamNameChange={setTeamName} players={players} onPlayerSave={savePlayer} onClearAll={clearAllPlayers} onNext={() => { requestAI(players); setPhase("team-analysis"); }} onBack={() => setPhase("landing")} onDemo={() => setDemoPicker("fill")} />}
       {phase === "team-analysis"   && <TeamAnalysis players={players} teamName={teamName} ai={ai} aiPending={aiPending} aiError={aiError} onRetryAi={() => requestAI(players)} onNext={(a) => { setAnalysis(a); setPhase("coach"); }} onBack={() => setPhase("formation")} />}
       {phase === "coach"           && (() => {
         const a = analysis || mergeTeamAI(analyzeTeam(players), ai);
