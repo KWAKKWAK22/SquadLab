@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { rankFormations, FORMATIONS } from "./lineup";
+import { rankFormations } from "./lineup";
 
 // ═══════════════════════════════════════════════════════════════
 // 상수 & 설정
