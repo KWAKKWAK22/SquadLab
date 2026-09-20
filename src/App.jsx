@@ -2157,6 +2157,15 @@ function localTeamTalk(teamName, tactic, players, slots = FORMATION_4231) {
   ];
 }
 
+// 대본에서 이름이 불린 선수를 명단에서 찾습니다.
+// AI 가 target 에 "고영남" 대신 "고영남 선수"처럼 쓰는 경우가 있어 포함 검색도 봅니다.
+function findCalled(squad, target) {
+  if (!target) return null;
+  return squad.find(p => p.name === target)
+      || squad.find(p => target.includes(p.name))
+      || null;
+}
+
 function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticAi, tacticAiPending, tacticAiError, onRetryTacticAi, onNext, onBack }) {
   const waiting = tacticAiPending && !tacticAi;
   const lines = tacticAi?.lockerRoom?.length
@@ -2164,6 +2173,18 @@ function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticA
     : localTeamTalk(teamName, tactic, players, slots);
   const total = lines.length;
   const [shown, setShown] = useState(0);
+
+  // 오늘 뛰는 11명. players 는 "실제로 세운 자리" 기준이라 여기 OVR·포지션이 다 있습니다.
+  const squad = slots
+    .filter(s => players[s.id]?.name)
+    .map(s => {
+      const pl = players[s.id];
+      return {
+        id: s.id, name: pl.name, pos: s.pos,
+        ovr: analyzePlayer(pl, s.pos).overall,
+        mainPos: pl.mainPos || s.pos,
+      };
+    });
 
   // AI 대본이 뒤늦게 도착하면 처음부터 다시 재생합니다
   useEffect(() => { setShown(0); }, [tacticAi]);
@@ -2177,10 +2198,23 @@ function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticA
 
   const done = !waiting && shown >= total;
 
+  // 방금 뜬 줄이 누군가를 지목했다면 그 선수를 명단에서 켭니다
+  const called = findCalled(squad, shown > 0 ? lines[shown - 1]?.target : null);
+
+  // 대본이 끝나면 한 명씩 그라운드로 나갑니다 (킥오프 전환)
+  const [walked, setWalked] = useState(0);
+  useEffect(() => { if (!done) setWalked(0); }, [done]);
+  useEffect(() => {
+    if (!done || walked >= squad.length) return;
+    const t = setTimeout(() => setWalked(n => n + 1), walked === 0 ? 400 : 95);
+    return () => clearTimeout(t);
+  }, [done, walked, squad.length]);
+  const out = done && squad.length > 0 && walked >= squad.length;
+
   return (
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 16px 60px" }}>
       <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>킥오프 10분 전</div>
+        <div style={{ fontSize: 10, color: "#4ade8099", letterSpacing: 2, marginBottom: 4 }}>{out ? "킥오프" : "킥오프 10분 전"}</div>
         <div style={{ fontSize: 22, fontWeight: 700, color: "#f0fdf4" }}>🗣️ 라커룸</div>
         <div style={{ fontSize: 12, color: "#475569", marginTop: 5 }}>
           {teamName} · <span style={{ color: tactic.color }}>{tactic.icon} {tactic.name}</span>
@@ -2188,6 +2222,42 @@ function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticA
         </div>
       </div>
       <AiFallbackNotice error={tacticAiError} onRetry={onRetryTacticAi} pending={tacticAiPending} />
+
+      {/* ── 선수단이 모여 있다 ──────────────────────────────
+          이름이 불리면 그 칩이 켜지고, 대본이 끝나면 한 명씩 나갑니다. */}
+      {squad.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
+            <span style={{ fontSize: 10, letterSpacing: 1.5, color: "#64748b", fontWeight: 700 }}>
+              {out ? "전원 그라운드로" : `오늘 나가는 ${squad.length}명`}
+            </span>
+            {called && !out && (
+              <span style={{ fontSize: 10.5, color: tactic.color, fontWeight: 700 }}>← {called.name} 호명</span>
+            )}
+          </div>
+          <div className="sq-locker-squad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(88px,1fr))", gap: 5 }}>
+            {squad.map((pl, i) => {
+              const lit = called?.id === pl.id;
+              const gone = i < walked;
+              return (
+                <div key={pl.id} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: lit ? `${tactic.color}1f` : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${lit ? tactic.color : "rgba(255,255,255,0.07)"}`,
+                  borderRadius: 9, padding: "5px 7px", minWidth: 0,
+                  opacity: gone ? 0.28 : 1,
+                  transform: gone ? "translateY(-4px)" : "none",
+                  transition: "opacity 0.35s ease, transform 0.35s ease, background 0.25s, border-color 0.25s",
+                }}>
+                  <span style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 13, fontWeight: 700, color: lit ? tactic.color : "#64748b", lineHeight: 1, flexShrink: 0 }}>{pl.ovr}</span>
+                  <span style={{ fontSize: 8.5, fontWeight: 700, color: "#475569", letterSpacing: 0.3, flexShrink: 0 }}>{pl.pos}</span>
+                  <span style={{ fontSize: 10.5, color: lit ? "#f0fdf4" : "#94a3b8", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ background: "linear-gradient(180deg,#0b1220,#070c16)", border: `1px solid ${tactic.color}33`, borderRadius: 18, padding: "20px 18px", minHeight: 330, marginBottom: 14 }}>
         {waiting ? (
@@ -2199,15 +2269,27 @@ function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticA
           <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
             {lines.slice(0, shown).map((line, i) => {
               const tone = TALK_TONE[line.tone] || TALK_TONE["전술"];
+              const who = findCalled(squad, line.target);
               return (
                 <div key={i} style={{ animation: "fadeUp 0.45s ease both", display: "flex", gap: 10, alignItems: "flex-start" }}>
                   <div style={{ width: 28, height: 28, borderRadius: 9, background: `${tone.color}1f`, border: `1px solid ${tone.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{tone.icon}</div>
-                  <div style={{ flex: 1, paddingTop: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                       <span style={{ fontSize: 9, letterSpacing: 1, color: tone.color, fontWeight: 700 }}>{line.tone}</span>
                       {line.target && <span style={{ fontSize: 9, color: "#475569" }}>· {line.target}</span>}
                     </div>
-                    <div style={{ fontSize: 14, color: "#e2e8f0", lineHeight: 1.7 }}>{line.text}</div>
+                    <div style={{ fontSize: 14, color: "#e2e8f0", lineHeight: 1.7, wordBreak: "keep-all" }}>{line.text}</div>
+                    {/* 지목된 선수를 세웁니다 — 이름만 흐르면 누구인지 와닿지 않습니다 */}
+                    {who && (
+                      <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.04)", border: `1px solid ${tone.color}44`, borderRadius: 10, padding: "6px 11px", maxWidth: "100%", flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: "'Rajdhani',sans-serif", fontSize: 18, fontWeight: 700, color: tone.color, lineHeight: 1 }}>{who.ovr}</span>
+                        <span style={{ fontSize: 9.5, fontWeight: 700, color: "#94a3b8", letterSpacing: 0.4 }}>{who.pos}</span>
+                        <span style={{ fontSize: 12.5, color: "#e2e8f0", fontWeight: 700 }}>{who.name}</span>
+                        {who.mainPos !== who.pos && (
+                          <span style={{ fontSize: 10, color: "#fbbf24" }}>평소 {who.mainPos}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -2229,7 +2311,9 @@ function LockerRoom({ teamName, tactic, players, slots = FORMATION_4231, tacticA
 
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onBack} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#94a3b8", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>← 전술 가이드</button>
-        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: done ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(74,222,128,0.18)", color: done ? "#052e16" : "#4ade8099", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>✓ 결과 보기</button>
+        <button onClick={onNext} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: done ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(74,222,128,0.18)", color: done ? "#052e16" : "#4ade8099", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
+          {out ? "⚽ 경기장으로 →" : "✓ 결과 보기"}
+        </button>
       </div>
     </div>
   );
