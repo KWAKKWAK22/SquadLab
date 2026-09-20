@@ -124,8 +124,46 @@ const TEAM_SCHEMA = {
       },
       required: ["id", "why"],
     },
+    coachIntros: {
+      type: "ARRAY",
+      description:
+        "코치 3인이 각각 선임 직후 감독에게 건네는 첫 인사. " +
+        "감독이 누구를 고를지 모르므로 세 명 전부에 대해 작성합니다.",
+      items: {
+        type: "OBJECT",
+        properties: {
+          id: S("textbook / attack / defense 중 하나. 반드시 이 영문 id 그대로."),
+          impression: S("이 팀의 첫인상. 강점 하나와 약점 하나를 한 문장에. 50자 이내."),
+          pick: S("선수 두 명을 이름으로 짚는 문장. 기대되는 한 명, 걱정되는 한 명. 55자 이내."),
+          previews: {
+            type: "ARRAY",
+            description:
+              "전술 3개 각각에 대해, 그 전술로 간다면 이 코치가 어떻게 말할지. 3개 전부 작성. " +
+              "실제로 어느 것을 화면에 쓸지는 코드가 고릅니다.",
+            items: {
+              type: "OBJECT",
+              properties: {
+                tactic: S("전술 이름. 입력받은 것 그대로."),
+                text: S("그 전술로 간다면 감독에게 건넬 한 문장. 45자 이내. 전술 이름을 넣을 것."),
+              },
+              required: ["tactic", "text"],
+            },
+          },
+        },
+        required: ["id", "impression", "pick", "previews"],
+      },
+    },
   },
-  required: ["players", "team", "tactics", "recommendation", "coach"],
+  required: ["players", "team", "tactics", "recommendation", "coach", "coachIntros"],
+};
+
+// 코치별 전술 성향 보정 — src/App.jsx 의 COACHES[].bias 와 같은 값입니다.
+// 여기 있는 이유는 AI 의 "전술 예고"가 화면의 코치 1순위와 어긋나지 않는지
+// 서버에서 검증하기 위해서입니다. 한쪽을 고치면 다른 쪽도 같이 고쳐야 합니다.
+const COACH_BIAS = {
+  textbook: { "역습 축구": 0,  "점유율 축구": 0, "압박 축구": 0 },
+  attack:   { "역습 축구": -5, "점유율 축구": 3, "압박 축구": 8 },
+  defense:  { "역습 축구": 7,  "점유율 축구": 2, "압박 축구": -8 },
 };
 
 // ───────────────────────────────────────────────────────────────
@@ -184,6 +222,30 @@ ${computed.tactics.map((t) => `- ${t.name}: ${t.fit}점`).join("\n")}
 - attack   (공격파) : 라인을 올려 상대 진영에서 끊는 축구를 좋아합니다. 체력과 속도가 받쳐줄 때 어울립니다.
 - defense  (수비파) : 라인을 내려 뒷공간을 지우고 뺏은 뒤 찌릅니다. 피지컬과 기술로 버티는 팀에 어울립니다.
 팀이 어느 쪽으로도 뚜렷하지 않으면 textbook을 고르세요. 억지로 색을 입히지 마세요.
+
+[코치 첫 인사 — coachIntros]
+감독이 코치를 선임한 직후, 그 코치가 감독에게 건네는 첫 3줄입니다.
+누구를 고를지 모르므로 세 코치 전부에 대해 쓰세요.
+듣는 사람은 선수가 아니라 감독입니다. 라커룸 연설처럼 쓰지 마세요.
+
+셋의 말투가 분명히 갈려야 합니다. 같은 팀을 보고도 다르게 말하는 것이 이 기능의 전부입니다.
+- textbook : 차분하고 건조하게. 근거를 먼저 대고 판단을 뒤에 붙입니다. 과장하지 않습니다.
+- attack   : 짧고 뜨겁게. 약점보다 기회를 먼저 말하고 망설이지 말라고 밀어붙입니다.
+- defense  : 단호하고 낮게. 위험부터 짚고 지킬 것을 분명히 정합니다. 칭찬은 짧습니다.
+
+세 줄은 각각 이렇게 씁니다.
+- impression : 이 팀의 첫인상. 강점 하나와 약점 하나를 한 문장에 같이 담으세요.
+- pick       : 선수 두 명을 반드시 이름으로 부르세요 — 기대되는 한 명, 걱정되는 한 명.
+               이유는 능력치가 아니라 성향에서 찾으세요. 능력치는 이미 위 숫자에 들어 있습니다.
+- previews   : 전술 3개 각각에 대해 한 문장씩, 3개 전부 씁니다.
+               "그 전술로 간다면 이 코치는 이렇게 말한다"를 쓰면 됩니다.
+               어느 것이 화면에 뜰지는 당신이 고르지 않습니다 — 코드가 코치 성향까지
+               계산해서 고릅니다. 그러니 어느 전술이 1순위인지 맞히려 하지 마세요.
+               세 문장 모두 그 코치답게, 그리고 서로 다르게 쓰세요.
+               (같은 압박 축구라도 공격파는 반기고 수비파는 마뜩잖아 합니다)
+
+코치 카드에 이미 적힌 신조("데이터가 가리키는 대로 갑니다" 같은 것)를 되풀이하지 마세요.
+감독은 그 문장을 방금 읽고 고른 참입니다. 이 팀에 대한 말만 하세요.
 
 [작성 규칙]
 - 모든 문장은 한국어 존댓말. 동호인이 바로 알아들을 수 있는 쉬운 표현.
@@ -375,7 +437,7 @@ async function callGemini(model, prompt, apiKey, schema) {
           responseMimeType: "application/json",
           responseSchema: schema,
           temperature: 0.7,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
         },
       }),
     });
@@ -388,8 +450,17 @@ async function callGemini(model, prompt, apiKey, schema) {
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const cand = data?.candidates?.[0];
+    const text = cand?.content?.parts?.[0]?.text;
     if (!text) throw new Error("Gemini 응답에 본문이 없습니다.");
+    // 출력 한도에 걸리면 Gemini 는 JSON 을 닫아서 돌려줍니다.
+    // 그래서 파싱은 성공하고 뒤쪽 필드만 조용히 사라집니다 — 실제로 선수 11명일 때
+    // coachIntros 가 통째로 없어졌는데, 화면은 폴백으로 멀쩡해 보여서 못 알아챘습니다.
+    // 여기서 크게 남기지 않으면 확인할 방법이 없습니다.
+    if (cand.finishReason && cand.finishReason !== "STOP") {
+      console.error("[Gemini 응답 잘림]", model, cand.finishReason,
+        "— maxOutputTokens 를 넘었습니다. 뒤쪽 필드가 비어 있을 수 있습니다.");
+    }
     return JSON.parse(text);
   } finally {
     clearTimeout(timer);
@@ -532,6 +603,32 @@ module.exports = async function handler(req, res) {
       ? { id: raw.coach.id, why: raw.coach.why || null }
       : null;
 
+    // 코치 첫 인사 — 전술 예고가 화면의 코치 1순위와 어긋나면 그 코치 것만 버립니다.
+    // 어긋난 채로 내보내면 바로 아래 전술 목록의 "○○파 1순위" 배지와 모순됩니다.
+    // 버려진 코치는 화면이 코드로 만든 기본 인사를 씁니다 (폴백이 기본 상태).
+    const coachIntros = {};
+    for (const it of raw.coachIntros || []) {
+      if (!COACH_IDS.includes(it?.id)) continue;
+      if (!it.impression || !it.pick || !it.previews?.length) continue;
+      const bias = COACH_BIAS[it.id];
+      const coachTop = [...tactics]
+        .sort((a, b) => (b.fitFinal + (bias[b.name] || 0)) - (a.fitFinal + (bias[a.name] || 0)))[0];
+      if (!coachTop) continue;
+      // 예고 문장은 AI가 전술 3개 분량을 다 써 보내고, 여기서 1순위 것만 꺼내 씁니다.
+      // AI에게 고르게 했더니 산수 대신 페르소나를 따라갔습니다 — 공격파의 1순위가
+      // 계산상 역습인데 "공격파니까 압박"이라고 썼습니다. 고르지 않으면 어긋날 수 없습니다.
+      const hit = (it.previews || []).find((x) => x && x.tactic === coachTop.name);
+      if (!hit || !hit.text) {
+        console.warn("[코치 예고 없음]", it.id, "필요:", coachTop.name);
+        continue;
+      }
+      coachIntros[it.id] = {
+        impression: it.impression,
+        pick: it.pick,
+        preview: hit.text,
+      };
+    }
+
     return res.status(200).json({
       source: "ai",
       players: byId,
@@ -539,6 +636,7 @@ module.exports = async function handler(req, res) {
       tactics,
       recommendation,
       coach,
+      coachIntros,
     });
   } catch (e) {
     console.error("[AI 분석 실패]", mode, e.message);
